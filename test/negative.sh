@@ -17,3 +17,17 @@ echo $plain
 
 # List suffix without '_' taint suffix: SC9004 silent.
 hostList=foo
+
+# SC9005-silent: string emptiness and file/path tests still belong in [[ ]].
+x=
+[[ -z $x ]] && echo empty
+[[ -f /etc/hostname ]] && echo file
+[[ $x == foo ]] && echo eq
+# Arithmetic form is the recommended replacement.
+rc=$?
+(( rc == 0 )) && echo ok
+
+# SC9006-silent: inclusive forms and unrelated names.
+allowlist=()
+denylistFn() { :; }
+neutral=hello

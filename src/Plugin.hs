@@ -7,6 +7,8 @@
       SC9002 - Command substitution taint (optional: taint-assignment)
       SC9003 - Unnecessary quoting under IFS/noglob (optional: unnecessary-quoting)
       SC9004 - Mutually exclusive suffixes (always-on)
+      SC9005 - Numeric comparison in [[ ]] / [ ] (optional: numerics-in-brackets)
+      SC9006 - Legacy whitelist/blacklist identifier (optional: inclusive-language)
 -}
 module Plugin where
 
@@ -19,6 +21,8 @@ import qualified TaintSuffix
 import qualified MutualExclusive
 import qualified TaintAssignment
 import qualified UnnecessaryQuoting
+import qualified Numerics
+import qualified Inclusive
 
 foreign export ccall plugin_api_version :: IO CInt
 foreign export ccall plugin_init :: IO (StablePtr [CustomCheck])
@@ -31,5 +35,7 @@ plugin_init = newStablePtr [
     TaintSuffix.check,         -- SC9001, always-on
     MutualExclusive.check,     -- SC9004, always-on
     TaintAssignment.check,     -- SC9002, optional
-    UnnecessaryQuoting.check   -- SC9003, optional
+    UnnecessaryQuoting.check,  -- SC9003, optional
+    Numerics.check,            -- SC9005, optional
+    Inclusive.check            -- SC9006, optional
   ]

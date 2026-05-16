@@ -31,6 +31,8 @@
                 src/MutualExclusive.hs \
                 src/TaintAssignment.hs \
                 src/UnnecessaryQuoting.hs \
+                src/Numerics.hs \
+                src/Inclusive.hs \
                 src/Plugin.hs \
                 -o libconvention-checks.so \
                 -no-hs-main

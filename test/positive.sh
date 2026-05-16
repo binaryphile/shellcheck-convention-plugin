@@ -14,3 +14,11 @@ echo "$plain"
 
 # SC9004: '_' taint suffix and 'List' suffix are mutually exclusive.
 hostList_=foo
+
+# SC9005: numeric comparison in [[ ]]; bash-style-guide §7 says use (( )).
+rc=$?
+[[ $rc -eq 0 ]] && echo ok
+
+# SC9006: identifier contains the legacy whitelist/blacklist substring.
+whitelist=()
+blacklistFn() { :; }

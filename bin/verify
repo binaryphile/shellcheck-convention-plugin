@@ -11,11 +11,11 @@ mkdir -p "$tmp/plugins"
 cp "$plugin_out/lib/shellcheck/plugins/libconvention-checks.so" "$tmp/plugins/"
 
 sc="$sc_out/bin/shellcheck"
-codes=(9001 9002 9003 9004)
+codes=(9001 9002 9003 9004 9005 9006)
 
 pos=$("$sc" --plugin-dir "$tmp/plugins" --enable=all -f gcc test/positive.sh 2>&1 || true)
 
-if ! grep -qE 'Loaded plugin: libconvention-checks\.so \(4 check\(s\)\)' <<<"$pos"; then
+if ! grep -qE 'Loaded plugin: libconvention-checks\.so \(6 check\(s\)\)' <<<"$pos"; then
   printf 'FAIL: shellcheck did not log dlopen success\n%s\n' "$pos" >&2
   exit 1
 fi
@@ -36,4 +36,4 @@ for c in "${codes[@]}"; do
   fi
 done
 
-printf 'OK: SC9001-SC9004 emitted on positive, silent on negative; dlopen confirmed\n'
+printf 'OK: SC9001-SC9006 emitted on positive, silent on negative; dlopen confirmed\n'
