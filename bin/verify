@@ -1,0 +1,39 @@
+#!/usr/bin/env bash
+set -euo pipefail
+cd "$(dirname "$0")/.."
+
+plugin_out=$(nix build .#default     --print-out-paths --no-link)
+sc_out=$(    nix build .#shellcheck  --print-out-paths --no-link)
+
+tmp=$(mktemp -d)
+trap 'rm -rf "$tmp"' EXIT
+mkdir -p "$tmp/plugins"
+cp "$plugin_out/lib/shellcheck/plugins/libconvention-checks.so" "$tmp/plugins/"
+
+sc="$sc_out/bin/shellcheck"
+codes=(9001 9002 9003 9004)
+
+pos=$("$sc" --plugin-dir "$tmp/plugins" --enable=all -f gcc test/positive.sh 2>&1 || true)
+
+if ! grep -qE 'Loaded plugin: libconvention-checks\.so \(4 check\(s\)\)' <<<"$pos"; then
+  printf 'FAIL: shellcheck did not log dlopen success\n%s\n' "$pos" >&2
+  exit 1
+fi
+
+for c in "${codes[@]}"; do
+  if ! grep -qE "SC$c\\b" <<<"$pos"; then
+    printf 'FAIL: SC%s not emitted on positive fixture\n%s\n' "$c" "$pos" >&2
+    exit 1
+  fi
+done
+
+neg=$("$sc" --plugin-dir "$tmp/plugins" --enable=all -f gcc test/negative.sh 2>&1 || true)
+
+for c in "${codes[@]}"; do
+  if grep -qE "SC$c\\b" <<<"$neg"; then
+    printf 'FAIL: SC%s spuriously emitted on negative fixture\n%s\n' "$c" "$neg" >&2
+    exit 1
+  fi
+done
+
+printf 'OK: SC9001-SC9004 emitted on positive, silent on negative; dlopen confirmed\n'

@@ -11,29 +11,36 @@
     flake-utils.lib.eachDefaultSystem (system:
       let
         pkgs = import nixpkgs { inherit system; };
-        scPkg = shellcheck.packages.${system}.lib;
-        ghc = pkgs.haskellPackages.ghcWithPackages (p: [ scPkg ]);
+        haskellPackages = pkgs.haskellPackages.override {
+          overrides = hself: hsuper: {
+            ShellCheck = hself.callCabal2nix "ShellCheck" shellcheck {};
+          };
+        };
+        ghc = haskellPackages.ghcWithPackages (p: [ p.ShellCheck p.QuickCheck ]);
       in {
-        packages.default = pkgs.stdenv.mkDerivation {
-          name = "shellcheck-convention-plugin";
-          src = ./.;
-          buildInputs = [ ghc ];
-          buildPhase = ''
-            ghc -dynamic -shared -fPIC \
-              -isrc \
-              src/Convention.hs \
-              src/TaintSuffix.hs \
-              src/MutualExclusive.hs \
-              src/TaintAssignment.hs \
-              src/UnnecessaryQuoting.hs \
-              src/Plugin.hs \
-              -o libconvention-checks.so \
-              -main-is Plugin
-          '';
-          installPhase = ''
-            mkdir -p $out/lib/shellcheck/plugins
-            cp libconvention-checks.so $out/lib/shellcheck/plugins/
-          '';
+        packages = {
+          default = pkgs.stdenv.mkDerivation {
+            name = "shellcheck-convention-plugin";
+            src = ./.;
+            buildInputs = [ ghc ];
+            buildPhase = ''
+              ghc -dynamic -shared -fPIC \
+                -isrc \
+                src/Convention.hs \
+                src/TaintSuffix.hs \
+                src/MutualExclusive.hs \
+                src/TaintAssignment.hs \
+                src/UnnecessaryQuoting.hs \
+                src/Plugin.hs \
+                -o libconvention-checks.so \
+                -no-hs-main
+            '';
+            installPhase = ''
+              mkdir -p $out/lib/shellcheck/plugins
+              cp libconvention-checks.so $out/lib/shellcheck/plugins/
+            '';
+          };
+          shellcheck = haskellPackages.ShellCheck;
         };
       });
 }
