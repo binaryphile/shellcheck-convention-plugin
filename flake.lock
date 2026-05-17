@@ -81,11 +81,11 @@
         "nixpkgs": "nixpkgs_2"
       },
       "locked": {
-        "lastModified": 1778998875,
-        "narHash": "sha256-bFBmrUU6mDM8a9T/QLjHMugZzO5sT4pWLWEM6SoApv0=",
+        "lastModified": 1779044350,
+        "narHash": "sha256-4a04SmquLRkBPUzDTPsks31CUENZANPF+FlfwZiEASk=",
         "owner": "binaryphile",
         "repo": "shellcheck",
-        "rev": "3d459b579c68e7a46d5d4c262c6945ca12bb02c0",
+        "rev": "ddbd0c3061aecbb8c8a28688b94d247035d3a8cc",
         "type": "github"
       },
       "original": {

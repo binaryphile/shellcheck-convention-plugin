@@ -22,3 +22,7 @@ rc=$?
 # SC9006: identifier contains the legacy whitelist/blacklist substring.
 whitelist=()
 blacklistFn() { :; }
+
+# SC9007: docstring above function doesn't start with the function name.
+# Helper that frobs the input
+docfn() { :; }

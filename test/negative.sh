@@ -31,3 +31,12 @@ rc=$?
 allowlist=()
 denylistFn() { :; }
 neutral=hello
+
+# SC9007-silent: docstring's first word matches the function name.
+
+# docfn frobs the input
+docfn() { :; }
+
+# Function with no docstring at all: also silent (nothing to validate).
+
+bareFn() { :; }

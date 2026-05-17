@@ -9,6 +9,7 @@
       SC9004 - Mutually exclusive suffixes (always-on)
       SC9005 - Numeric comparison in [[ ]] / [ ] (optional: numerics-in-brackets)
       SC9006 - Legacy whitelist/blacklist identifier (optional: inclusive-language)
+      SC9007 - Docstring should begin with function name (optional: docstring-shape)
 -}
 module Plugin where
 
@@ -23,6 +24,7 @@ import qualified TaintAssignment
 import qualified UnnecessaryQuoting
 import qualified Numerics
 import qualified Inclusive
+import qualified Docstring
 
 foreign export ccall plugin_api_version :: IO CInt
 foreign export ccall plugin_init :: IO (StablePtr [CustomCheck])
@@ -37,5 +39,6 @@ plugin_init = newStablePtr [
     TaintAssignment.check,     -- SC9002, optional
     UnnecessaryQuoting.check,  -- SC9003, optional
     Numerics.check,            -- SC9005, optional
-    Inclusive.check            -- SC9006, optional
+    Inclusive.check,           -- SC9006, optional
+    Docstring.check            -- SC9007, optional
   ]
