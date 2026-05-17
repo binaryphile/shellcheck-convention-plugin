@@ -32,6 +32,10 @@ allowlist=()
 denylistFn() { :; }
 neutral=hello
 
+# SC9006-comments-silent: comment using inclusive forms only (#7739).
+# prefer the allowlist / denylist terminology
+echo ok
+
 # SC9007-silent: docstring's first word matches the function name.
 
 # docfn frobs the input

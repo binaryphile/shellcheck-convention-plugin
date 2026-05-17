@@ -23,6 +23,10 @@ rc=$?
 whitelist=()
 blacklistFn() { :; }
 
+# SC9006-comments: legacy term in comment text (#7739).
+# avoid using whitelist; prefer allowlist instead
+echo ok
+
 # SC9007: docstring above function doesn't start with the function name.
 # Helper that frobs the input
 docfn() { :; }

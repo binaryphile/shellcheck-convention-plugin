@@ -8,7 +8,7 @@
       SC9003 - Unnecessary quoting under IFS/noglob (optional: unnecessary-quoting)
       SC9004 - Mutually exclusive suffixes (always-on)
       SC9005 - Numeric comparison in [[ ]] / [ ] (optional: numerics-in-brackets)
-      SC9006 - Legacy whitelist/blacklist identifier (optional: inclusive-language)
+      SC9006 - Legacy whitelist/blacklist in identifier or comment (optional: inclusive-language)
       SC9007 - Docstring should begin with function name (optional: docstring-shape)
 -}
 module Plugin where
