@@ -54,11 +54,11 @@
     },
     "nixpkgs_2": {
       "locked": {
-        "lastModified": 1778794387,
-        "narHash": "sha256-BL04pOS9453Awkeb9f90XBJXBSkWxN+vB7HIgnL0iMM=",
+        "lastModified": 1778869304,
+        "narHash": "sha256-30sZNZoA1cqF5JNO9fVX+wgiQYjB7HJqqJ4ztCDeBZE=",
         "owner": "NixOS",
         "repo": "nixpkgs",
-        "rev": "8a1b0127302ea51e05bf4ea5a291743fac442406",
+        "rev": "d233902339c02a9c334e7e593de68855ad26c4cb",
         "type": "github"
       },
       "original": {
@@ -81,16 +81,15 @@
         "nixpkgs": "nixpkgs_2"
       },
       "locked": {
-        "lastModified": 1777949997,
-        "narHash": "sha256-UQ8q3OfiPMXD6nTCkf0T9ZwBh5kAThWQ82y/wcbezIo=",
+        "lastModified": 1778998875,
+        "narHash": "sha256-bFBmrUU6mDM8a9T/QLjHMugZzO5sT4pWLWEM6SoApv0=",
         "owner": "binaryphile",
         "repo": "shellcheck",
-        "rev": "62909687b4360f34fbe0ed252a9a199225ac72fc",
+        "rev": "3d459b579c68e7a46d5d4c262c6945ca12bb02c0",
         "type": "github"
       },
       "original": {
         "owner": "binaryphile",
-        "ref": "dynamic-plugin-loading",
         "repo": "shellcheck",
         "type": "github"
       }
