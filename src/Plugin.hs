@@ -10,6 +10,7 @@
       SC9005 - Numeric comparison in [[ ]] / [ ] (optional: numerics-in-brackets)
       SC9006 - Legacy whitelist/blacklist in identifier or comment (optional: inclusive-language)
       SC9007 - Docstring should begin with function name (optional: docstring-shape)
+      SC9008 - *List should be IFS-serialized string, not array (optional: list-array-misuse)
 -}
 module Plugin where
 
@@ -25,6 +26,7 @@ import qualified UnnecessaryQuoting
 import qualified Numerics
 import qualified Inclusive
 import qualified Docstring
+import qualified ListInit
 
 foreign export ccall plugin_api_version :: IO CInt
 foreign export ccall plugin_init :: IO (StablePtr [CustomCheck])
@@ -40,5 +42,6 @@ plugin_init = newStablePtr [
     UnnecessaryQuoting.check,  -- SC9003, optional
     Numerics.check,            -- SC9005, optional
     Inclusive.check,           -- SC9006, optional
-    Docstring.check            -- SC9007, optional
+    Docstring.check,           -- SC9007, optional
+    ListInit.check             -- SC9008, optional
   ]

@@ -195,8 +195,9 @@ mapping is direct; checks without a published source are tagged
   the `_` taint suffix and the `List` suffix (with optional
   single-uppercase library marker).
 - **Notes**: The List/array distinction here pivots on a different
-  question than SC9008's (reverted) — see SC9008 for the *List
-  reconciliation.
+  question than SC9008's — SC9004 forbids combining `_` and `List`
+  on one name; SC9008 enforces the §3 rule that `*List` is an
+  IFS-serialized string (not an array).
 
 ### SC9005 — Numeric comparison in `[[ ]]` / `[ ]`
 
@@ -247,32 +248,43 @@ mapping is direct; checks without a published source are tagged
 - **Notes**: landed via task #7689 (commit 3077be2). First consumer
   of the T_Comment splice.
 
-### SC9008 — REVERTED (list-init-shape misframe)
+### SC9008 — `*List` should be an IFS-serialized string, not an array
 
-- **Status**: shipped 2026-05-18 (commit 5f353b7); **reverted** same
-  day (commit 90fc758) on `main`. Plugin currently exports
-  SC9001-SC9007 only.
-- **What the reverted version did**: warned on `T_Assignment` where
-  the variable name ended in `List`/`List<X>` and the value was not
-  a `T_Array` literal. Implemented the umbrella task #6186 rule 5
-  ("List-suffixed variables should be initialized as arrays") at
-  face value.
-- **Why it was wrong**: bash-style-guide §3 line 72 says `*List` is
-  an **IFS-serialized string** (must-quote on expansion), not an
-  array. Arrays use plural-noun suffix
-  (`octopi=( inky blinky )`). The umbrella's rule 5 misframed
-  the *List shape; the SC9008 implementation followed the misframe.
-- **Reconciliation**: tasks.jeeves #6469 closed with Option A
-  (§3 stands as written); task-done event #7937.
-- **Supersede target**: task #7951 on this stream will re-implement
-  SC9008 with the corrected rule (flag `*List = ( ... )` array
-  literals; suggest plural-noun suffix). SC9008 code is renewable
-  because the rule's *direction* was wrong, not its number-space.
-- **Process lesson** (era memory `ce0e0fb50087`): when retro-claiming
-  closure on an umbrella, read the cross-stream follow-up tasks in
-  full — they often carry critical context that changes how "done"
-  should be evaluated. The umbrella's wording alone is not
-  sufficient.
+- **Module**: `src/ListInit.hs`
+- **Severity**: `warn`
+- **Always-on**: no — `cdName = "list-array-misuse"`
+- **Source rule**: bash-style-guide §3 line 72 — `*List` suffix
+  signals a serialized list using IFS=\n as the separator;
+  must-quote on every expansion. Arrays use plural-noun suffix
+  (`octopi=( inky blinky )`).
+- **Pattern**: `T_Assignment` where the variable name ends in
+  `List` or `List<X>` (uppercase X library marker) AND the value is
+  a `T_Array` literal. Suggests a plural-noun suffix (best-effort
+  pluralization strips `List` and appends `s`).
+- **False-positive shape**: `declare -a xList=(...)` triggers the
+  warning because `T_Assignment` doesn't see the wrapping
+  `T_SimpleCommand`'s `-a` flag. Accepted as a deferred edge case;
+  parent-command lookup adds disproportionate code for the gain.
+
+#### Audit trail — prior misframe (preserved for the record)
+
+The first SC9008 attempt (shipped 2026-05-18 in commit 5f353b7,
+reverted same day in commit 90fc758) implemented the **inverse**
+rule: it warned when `*List` was NOT an array. That misframe came
+from umbrella task #6186 rule 5 wording ("List-suffixed variables
+should be initialized as arrays"), which contradicted §3 and was
+never reconciled before SC9008 shipped. tasks.jeeves #6469 closed
+the contradiction with Option A (task-done #7937): §3 stands as
+written. SC9008 was re-implemented with the corrected direction
+under task #7951 (commit recorded on `evtctl done 7951`). The
+SC9008 code itself was renewable because the rule's *direction*
+was wrong, not its number-space; `cdName` changed from
+`list-init-shape` (described the wrong rule) to `list-array-misuse`.
+
+Process retrospective: era memory `ce0e0fb50087` — when
+retro-claiming closure on an umbrella, read the cross-stream
+follow-up tasks in full; the umbrella's original wording alone is
+not sufficient context.
 
 ## 4. Reference
 

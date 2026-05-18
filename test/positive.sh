@@ -30,3 +30,6 @@ echo ok
 # SC9007: docstring above function doesn't start with the function name.
 # Helper that frobs the input
 docfn() { :; }
+
+# SC9008: *List suffix used with array initializer; *List should be IFS-string (§3).
+xList=(a b c)

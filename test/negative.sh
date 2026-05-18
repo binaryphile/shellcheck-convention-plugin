@@ -16,6 +16,7 @@ plain=hello
 echo $plain
 
 # List suffix without '_' taint suffix: SC9004 silent.
+# Also SC9008 silent (List + string value = correct §3 form: IFS-serialized string).
 hostList=foo
 
 # SC9005-silent: string emptiness and file/path tests still belong in [[ ]].
@@ -44,3 +45,7 @@ docfn() { :; }
 # Function with no docstring at all: also silent (nothing to validate).
 
 bareFn() { :; }
+
+# SC9008-silent: plural-noun suffix used for arrays (the correct §3 form).
+octopi=(inky blinky pinky clyde)
+widgets=("$@")
