@@ -30,6 +30,3 @@ echo ok
 # SC9007: docstring above function doesn't start with the function name.
 # Helper that frobs the input
 docfn() { :; }
-
-# SC9008: List-suffixed variable initialized as a string, not array.
-xList=foo
