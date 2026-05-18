@@ -16,7 +16,8 @@ plain=hello
 echo $plain
 
 # List suffix without '_' taint suffix: SC9004 silent.
-hostList=foo
+# Array init keeps SC9008 silent too (#7815).
+hostList=()
 
 # SC9005-silent: string emptiness and file/path tests still belong in [[ ]].
 x=
@@ -44,3 +45,7 @@ docfn() { :; }
 # Function with no docstring at all: also silent (nothing to validate).
 
 bareFn() { :; }
+
+# SC9008-silent: List-suffixed variables initialized as arrays.
+xList=()
+yList=("a" "b" "c")

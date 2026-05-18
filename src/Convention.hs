@@ -6,6 +6,7 @@
 module Convention (
     hasTaintSuffix,
     hasListSuffix,
+    hasListSuffixOnBare,
     stripTaintSuffix
     ) where
 
@@ -23,13 +24,17 @@ stripTaintSuffix s
     | hasTaintSuffix s = init s
     | otherwise        = s
 
--- | True if the name (which must already have a taint suffix) also has a List suffix.
--- Handles optional single-uppercase library suffix letter between "List" and "_".
--- Examples: hostList_ (yes), hostListQ_ (yes), listItems_ (no), hostlist_ (no).
+-- | True if the bare name (no taint suffix) ends in 'List' or 'List<X>'
+-- where X is a single uppercase ASCII library suffix letter.
+-- Examples: hostList (yes), hostListQ (yes), listItems (no), hostlist (no).
+hasListSuffixOnBare :: String -> Bool
+hasListSuffixOnBare name =
+    "List" `isSuffixOf` name
+    || (length name >= 5
+        && isAsciiUpper (last name)
+        && "List" `isSuffixOf` init name)
+
+-- | True if the name (which must already have a taint suffix) also has
+-- a List suffix. Strips '_' first and delegates to hasListSuffixOnBare.
 hasListSuffix :: String -> Bool
-hasListSuffix name =
-    let base = stripTaintSuffix name
-    in "List" `isSuffixOf` base
-       || (length base >= 5
-           && isAsciiUpper (last base)
-           && "List" `isSuffixOf` init base)
+hasListSuffix = hasListSuffixOnBare . stripTaintSuffix
