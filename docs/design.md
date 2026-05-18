@@ -122,7 +122,7 @@ end-to-end correctness coverage, see §2.3.
 
 The contract gate. Builds the plugin and the host shellcheck (both
 via nix), copies the `.so` into a temp plugin dir, runs shellcheck
-with `--enable=all` against `test/positive.sh` and `test/negative.sh`,
+with `--enable=all` against `test/positive` and `test/negative`,
 and asserts:
 
 1. Plugin logs `Loaded plugin: libconvention-checks.so (N check(s))`
@@ -285,6 +285,92 @@ Process retrospective: era memory `ce0e0fb50087` — when
 retro-claiming closure on an umbrella, read the cross-stream
 follow-up tasks in full; the umbrella's original wording alone is
 not sufficient context.
+
+### SC9009 — Uninitialized-then-appended (declare without init, first materialized via +=)
+
+- **Module**: `src/NilAvoidance.hs`
+- **Severity**: `warn`
+- **Always-on**: no — `cdName = "nil-avoidance"`
+- **Source rule**: bash-style-guide §6 "Initialize at declaration —
+  don't ship uninitialized-then-appended variables" (accelecon/jeeves
+  commit b7ad13e). Operative case: within one scope, every path
+  between declaration and first read uses `+=` and never a plain `=`.
+- **Implementation note (lexical approximation)**: SC9009 is a
+  lexical heuristic over writes ordered by source position, NOT a
+  path-sensitive analysis. The check warns when every write of the
+  variable lexically between its declaration and first read is in
+  AppendOrRisky (T_Assignment Append or bare `read`). AlwaysInit
+  writes (T_Assignment Assign, mapfile, readarray, `printf -v`,
+  `(( x = ... ))`) suppress the warning. Matches §6's spec for all
+  sequential and mixed-branch shapes; over-fires on conditional
+  structures with an empty/write-free path (documented below).
+- **Pattern**: T_SimpleCommand with cmd in {local, declare, typeset}
+  and a bare-name arg AND no `-n` flag; followed in the same scope
+  (T_Function body or T_Script body) by reads + writes where every
+  write before the first read is AppendOrRisky.
+- **Reads detected**: T_DollarBraced (covers `$x`, `${x}`, modifier
+  forms via `getBracedReference`); TC_Unary with op in `{-v, -n, -z}`
+  (sentinel pattern); TA_Variable inside arithmetic. Generic word
+  descent via the scope walker means any context that embeds a
+  T_DollarBraced (case scrutinee, for-in list, here-string, redirect
+  target, command argument) is covered transitively.
+- **Writes classified**:
+  - AlwaysInit: T_Assignment Assign; mapfile; readarray; `printf -v`;
+    T_Arithmetic with TA_Assignment (any operator).
+  - AppendOrRisky: T_Assignment Append; bare `read`.
+  - Invisible (false-negative shape; not detected at all): `let`,
+    `eval`, `getopts`, `coproc <name>`.
+- **Scope walk**: stops at nested T_Function (separate function
+  scope) AND at subshell-creating nodes T_Subshell, T_DollarExpansion,
+  T_ProcSub, T_Backticked, T_CoProc, T_CoProcBody. T_BraceGroup is
+  NOT a scope boundary (shares parent variable scope).
+- **Known false-positive shapes** (accept; mitigate via
+  `# shellcheck disable=SC9009`):
+  - **Conditional structures with empty / write-free path**: any
+    `if`/`for`/`while`/`case` shape where at least one CFG path to
+    first read skips the `+=` (empty else, zero-iteration loop,
+    no-op case branch). §6 strictly is silent; lexical heuristic
+    warns. Documented in `prop_sc9009_LEXICAL_OVERFIRE_silentBranch`.
+  - **Sentinel pattern with non-sentinel preceding writes**: the
+    sentinel form `[[ -v x ]]` / `[[ -n $x ]]` IS detected as a
+    read, so `local x; [[ -v x ]] && ...` correctly does not warn.
+    But `local x; x+=fallback; [[ -v x ]]` would still warn because
+    the `+=` precedes the sentinel read.
+- **Known false-negative shapes**:
+  - **Compound-block-scoped antipattern**: §6 enumerates "function
+    body, file top-level, OR compound block" as scope units. SC9009
+    only dispatches on T_Function and T_Script; T_BraceGroup is
+    walked through as part of the enclosing function's scope (this
+    is intentional — brace groups share variable scope with their
+    parent in bash). The miss: a `{ local x; x+=a; echo "$x"; }`
+    nested inside a function with an UNRELATED `x=foo` elsewhere in
+    that function would be silenced by the lexical heuristic (any
+    AlwaysInit in scope before first read suppresses), even though
+    a per-block §6 analysis would warn on the local-within-block.
+    Acceptable: brace-group-scoped misses are narrow; if noisy,
+    promote brace groups to dispatch in a follow-up cycle.
+  - **Invisible writers**: `let "x = ..."`, `eval "x=..."`,
+    `getopts opts x`, `coproc x { ... }` — write the variable but
+    SC9009 doesn't recognize them as writes (string-arg forms aren't
+    parsed; named-target conventions aren't modeled). If such a
+    writer is the only mutation before first read, no warning fires.
+    Could promote to AppendOrRisky classification in a follow-up
+    cycle.
+  - **Helper-function nameref mutation**: per §6, "out of scope —
+    rule lives at the original declaration site, not at the
+    nameref-borrowing callee". SC9009 correctly does NOT warn here.
+  - **Subshell-internal antipattern**: `local x; ( local y; y+=a;
+    echo "$y" )` — the inner antipattern is real in the subshell
+    scope, but SC9009 doesn't dispatch on T_Subshell separately
+    (only T_Function and T_Script).
+  - **Sourced files**: tokens live under T_Include / T_SourceCommand,
+    not in the caller's body. Scope attribution is approximate.
+  - **Trap handler strings**: handler arg is a string, not parsed.
+- **Notes**: first scope-aware plugin check. Intra-procedural data
+  flow on per-scope token walk (lexical, not CFG-based). /grade at
+  1d.5 reviewed scope-boundary edge cases and the lexical-vs-path
+  divergence; lexical heuristic accepted with documented over-fire
+  family.
 
 ## 4. Reference
 

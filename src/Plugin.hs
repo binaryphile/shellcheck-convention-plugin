@@ -11,6 +11,7 @@
       SC9006 - Legacy whitelist/blacklist in identifier or comment (optional: inclusive-language)
       SC9007 - Docstring should begin with function name (optional: docstring-shape)
       SC9008 - *List should be IFS-serialized string, not array (optional: list-array-misuse)
+      SC9009 - Uninitialized-then-appended variable (optional: nil-avoidance)
 -}
 module Plugin where
 
@@ -27,6 +28,7 @@ import qualified Numerics
 import qualified Inclusive
 import qualified Docstring
 import qualified ListInit
+import qualified NilAvoidance
 
 foreign export ccall plugin_api_version :: IO CInt
 foreign export ccall plugin_init :: IO (StablePtr [CustomCheck])
@@ -43,5 +45,6 @@ plugin_init = newStablePtr [
     Numerics.check,            -- SC9005, optional
     Inclusive.check,           -- SC9006, optional
     Docstring.check,           -- SC9007, optional
-    ListInit.check             -- SC9008, optional
+    ListInit.check,            -- SC9008, optional
+    NilAvoidance.check         -- SC9009, optional
   ]

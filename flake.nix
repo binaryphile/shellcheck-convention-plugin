@@ -1,5 +1,5 @@
 {
-  description = "IFS/noglob convention checks plugin for ShellCheck (SC9001-SC9008)";
+  description = "IFS/noglob convention checks plugin for ShellCheck (SC9001-SC9009)";
 
   inputs = {
     shellcheck.url = "github:binaryphile/shellcheck";
@@ -35,6 +35,7 @@
                 src/Inclusive.hs \
                 src/Docstring.hs \
                 src/ListInit.hs \
+                src/NilAvoidance.hs \
                 src/Plugin.hs \
                 -o libconvention-checks.so \
                 -no-hs-main

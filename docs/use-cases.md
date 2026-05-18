@@ -52,8 +52,8 @@ fire on its intended positive fixture is caught by the same gate.
 - `bin/verify`'s `codes` array includes the new SC code, the
   "Loaded plugin" assertion's check count is bumped, and the final
   OK message reflects the new range.
-- `test/positive.sh` has at least one fixture that fires the new
-  check; `test/negative.sh` has at least one fixture that stays
+- `test/positive` has at least one fixture that fires the new
+  check; `test/negative` has at least one fixture that stays
   silent.
 - `nix build .#default` green; `bin/verify` exits 0 with the
   expected OK line.
@@ -81,8 +81,8 @@ it.
 5. PM adds the new SC code to `bin/verify`'s `codes` array, bumps
    the "Loaded plugin: ... (N check(s))" regex, and updates the
    final OK message.
-6. PM adds a positive fixture to `test/positive.sh` and a negative
-   fixture to `test/negative.sh`.
+6. PM adds a positive fixture to `test/positive` and a negative
+   fixture to `test/negative`.
 7. PM runs `nix build .#default` — should succeed.
 8. PM runs `bin/verify` — should exit 0 with "OK: SC9001-SC<new>
    emitted on positive, silent on negative; dlopen confirmed".

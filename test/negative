@@ -49,3 +49,28 @@ bareFn() { :; }
 # SC9008-silent: plural-noun suffix used for arrays (the correct §3 form).
 octopi=(inky blinky pinky clyde)
 widgets=("$@")
+
+# SC9009-silent: init at declaration (the §6 canonical form).
+
+bar9009a() {
+    local items=()
+    items+=(a b c)
+    echo "${items[@]}"
+}
+bar9009a
+
+# SC9009-silent: mapfile is an always-init populating command.
+
+bar9009b() {
+    local hostnames
+    mapfile -t hostnames < /etc/hostname
+    echo "${hostnames[@]}"
+}
+bar9009b
+
+# SC9009-silent: nameref exception (no init makes sense).
+
+bar9009c() {
+    local -n REF=$1
+    REF=value
+}

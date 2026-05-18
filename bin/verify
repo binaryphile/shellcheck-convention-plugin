@@ -11,11 +11,11 @@ mkdir -p "$tmp/plugins"
 cp "$plugin_out/lib/shellcheck/plugins/libconvention-checks.so" "$tmp/plugins/"
 
 sc="$sc_out/bin/shellcheck"
-codes=(9001 9002 9003 9004 9005 9006 9007 9008)
+codes=(9001 9002 9003 9004 9005 9006 9007 9008 9009)
 
-pos=$("$sc" --plugin-dir "$tmp/plugins" --enable=all -f gcc test/positive.sh 2>&1 || true)
+pos=$("$sc" --plugin-dir "$tmp/plugins" --enable=all -f gcc test/positive 2>&1 || true)
 
-if ! grep -qE 'Loaded plugin: libconvention-checks\.so \(8 check\(s\)\)' <<<"$pos"; then
+if ! grep -qE 'Loaded plugin: libconvention-checks\.so \(9 check\(s\)\)' <<<"$pos"; then
   printf 'FAIL: shellcheck did not log dlopen success\n%s\n' "$pos" >&2
   exit 1
 fi
@@ -27,7 +27,7 @@ for c in "${codes[@]}"; do
   fi
 done
 
-neg=$("$sc" --plugin-dir "$tmp/plugins" --enable=all -f gcc test/negative.sh 2>&1 || true)
+neg=$("$sc" --plugin-dir "$tmp/plugins" --enable=all -f gcc test/negative 2>&1 || true)
 
 for c in "${codes[@]}"; do
   if grep -qE "SC$c\\b" <<<"$neg"; then
@@ -36,4 +36,4 @@ for c in "${codes[@]}"; do
   fi
 done
 
-printf 'OK: SC9001-SC9008 emitted on positive, silent on negative; dlopen confirmed\n'
+printf 'OK: SC9001-SC9009 emitted on positive, silent on negative; dlopen confirmed\n'

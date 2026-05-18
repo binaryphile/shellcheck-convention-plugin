@@ -33,3 +33,11 @@ docfn() { :; }
 
 # SC9008: *List suffix used with array initializer; *List should be IFS-string (§3).
 xList=(a b c)
+
+# SC9009: array declared without init, first materialized via += (§6).
+foo9009() {
+    local items
+    items+=(a b c)
+    echo "${items[@]}"
+}
+foo9009
