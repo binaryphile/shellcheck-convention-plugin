@@ -36,6 +36,7 @@
                 src/Docstring.hs \
                 src/ListInit.hs \
                 src/NilAvoidance.hs \
+                src/IfsNoglobDiscipline.hs \
                 src/Plugin.hs \
                 -o libconvention-checks.so \
                 -no-hs-main
