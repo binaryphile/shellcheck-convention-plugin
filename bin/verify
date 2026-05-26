@@ -11,29 +11,79 @@ mkdir -p "$tmp/plugins"
 cp "$plugin_out/lib/shellcheck/plugins/libconvention-checks.so" "$tmp/plugins/"
 
 sc="$sc_out/bin/shellcheck"
-codes=(9001 9002 9003 9004 9005 9006 9007 9008 9009)
+# Codes that must fire on test/positive (has IFS+noglob discipline).
+# SC9010 fires on test/positive-no-discipline + test/adversarial, NOT here.
+pos_codes=(9001 9002 9003 9004 9005 9006 9007 9008 9009)
 
 pos=$("$sc" --plugin-dir "$tmp/plugins" --enable=all -f gcc test/positive 2>&1 || true)
 
-if ! grep -qE 'Loaded plugin: libconvention-checks\.so \(9 check\(s\)\)' <<<"$pos"; then
-  printf 'FAIL: shellcheck did not log dlopen success\n%s\n' "$pos" >&2
+# Plugin now ships 10 checks (SC9001-SC9010 per #17958).
+if ! grep -qE 'Loaded plugin: libconvention-checks\.so \(10 check\(s\)\)' <<<"$pos"; then
+  printf 'FAIL: shellcheck did not log dlopen success (expected 10 checks)\n%s\n' "$pos" >&2
   exit 1
 fi
 
-for c in "${codes[@]}"; do
-  if ! grep -qE "SC$c\\b" <<<"$pos"; then
+for c in "${pos_codes[@]}"; do
+  if ! grep -qE "\[SC$c\]" <<<"$pos"; then
     printf 'FAIL: SC%s not emitted on positive fixture\n%s\n' "$c" "$pos" >&2
     exit 1
   fi
 done
 
+# SC9010 must NOT fire on test/positive (file has discipline; SC9003
+# handles its triggers there per the partition rule).
+if grep -qE '\[SC9010\]' <<<"$pos"; then
+  printf 'FAIL: SC9010 spuriously emitted on positive fixture (file has discipline)\n%s\n' "$pos" >&2
+  exit 1
+fi
+
 neg=$("$sc" --plugin-dir "$tmp/plugins" --enable=all -f gcc test/negative 2>&1 || true)
 
-for c in "${codes[@]}"; do
-  if grep -qE "SC$c\\b" <<<"$neg"; then
+# Negative fixture must stay silent for all 10 codes.
+all_codes=("${pos_codes[@]}" 9010)
+for c in "${all_codes[@]}"; do
+  if grep -qE "\[SC$c\]" <<<"$neg"; then
     printf 'FAIL: SC%s spuriously emitted on negative fixture\n%s\n' "$c" "$neg" >&2
     exit 1
   fi
 done
 
-printf 'OK: SC9001-SC9009 emitted on positive, silent on negative; dlopen confirmed\n'
+# SC9010-positive fixture: file lacks discipline; SC9010 fires at least
+# once (per-occurrence semantics), SC9003 silent (partition rule).
+nodisc=$("$sc" --plugin-dir "$tmp/plugins" --enable=all -f gcc test/positive-no-discipline 2>&1 || true)
+if ! grep -qE '\[SC9010\]' <<<"$nodisc"; then
+  printf 'FAIL: SC9010 not emitted on positive-no-discipline fixture\n%s\n' "$nodisc" >&2
+  exit 1
+fi
+if grep -qE '\[SC9003\]' <<<"$nodisc"; then
+  printf 'FAIL: SC9003 spuriously emitted on positive-no-discipline fixture (file lacks discipline)\n%s\n' "$nodisc" >&2
+  exit 1
+fi
+
+# Adversarial fixture: file accumulates state transitions (multi-char
+# IFS, IFS reassign, set +o noglob, conditional, function-local,
+# command-prefix inline) and ends with overriders that guarantee
+# whole-file predicate = absent → SC9010 fires; SC9003 silent.
+adv=$("$sc" --plugin-dir "$tmp/plugins" --enable=all -f gcc test/adversarial 2>&1 || true)
+if ! grep -qE '\[SC9010\]' <<<"$adv"; then
+  printf 'FAIL: SC9010 not emitted on adversarial fixture\n%s\n' "$adv" >&2
+  exit 1
+fi
+if grep -qE '\[SC9003\]' <<<"$adv"; then
+  printf 'FAIL: SC9003 spuriously emitted on adversarial fixture (file ends discipline-absent)\n%s\n' "$adv" >&2
+  exit 1
+fi
+
+# Inverse adversarial: discipline toggled OFF then back ON; final
+# state = present → SC9003 fires; SC9010 silent.
+retog=$("$sc" --plugin-dir "$tmp/plugins" --enable=all -f gcc test/adversarial-retoggle 2>&1 || true)
+if ! grep -qE '\[SC9003\]' <<<"$retog"; then
+  printf 'FAIL: SC9003 not emitted on adversarial-retoggle fixture (file ends discipline-present)\n%s\n' "$retog" >&2
+  exit 1
+fi
+if grep -qE '\[SC9010\]' <<<"$retog"; then
+  printf 'FAIL: SC9010 spuriously emitted on adversarial-retoggle fixture (file ends discipline-present)\n%s\n' "$retog" >&2
+  exit 1
+fi
+
+printf 'OK: SC9001-SC9010 emitted across positive/positive-no-discipline/adversarial/adversarial-retoggle fixtures; negative silent; dlopen confirmed\n'

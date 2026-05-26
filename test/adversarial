@@ -1,0 +1,52 @@
+#!/usr/bin/env bash
+# Adversarial fixture for SC9010 discipline-detection (R1-[G4] from
+# #17958 plan grading): exercises AST/state-transition edge cases that
+# the LATEST-EFFECTIVE predicate must correctly resolve to "discipline
+# absent". Triggers at the bottom should fire SC9010; SC9003 silent.
+#
+# Note: the predicate is WHOLE-FILE. Per-case fires aren't testable in
+# a single fixture; instead, this file accumulates state transitions
+# AND ends with overriders that guarantee final state = absent. Inverse
+# case (re-toggle BACK to present) lives in test/adversarial-retoggle.
+
+# --- State transition cases (illustrative; final-state overrider below) ---
+
+# Multi-char IFS ($'\n\t' is NOT canonical newline-only).
+IFS=$'\n\t'
+
+# IFS reassigned to : (latest-wins reverses earlier canonical IFS).
+IFS=$'\n'
+IFS=:
+
+# set +o noglob reverses set -o noglob (latest-wins).
+set -o noglob
+set +o noglob
+
+# Conditional discipline (top-level rule excludes — direct-children
+# walk doesn't descend into T_IfExpression bodies).
+if false; then
+  IFS=$'\n'
+  set -o noglob
+fi
+
+# Function-local discipline (top-level rule excludes — direct-children
+# walk doesn't descend into T_Function bodies).
+fnE() {
+  IFS=$'\n'
+  set -o noglob
+}
+
+# Command-prefix inline assignment (NOT a T_Assignment; parses as
+# T_SimpleCommand with assignment prefix on the `read` invocation).
+IFS=$'\n' read -r local_var < /dev/null || true
+
+# --- Final-state overriders ensure whole-file predicate = absent ---
+IFS=:
+set +o noglob
+
+# --- Triggers: SC9010 fires here ---
+var=hello
+echo "$var"
+
+greeting=world
+printf '%s\n' "$greeting"

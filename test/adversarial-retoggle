@@ -1,0 +1,14 @@
+#!/usr/bin/env bash
+# Inverse adversarial fixture: discipline gets toggled OFF then back
+# ON. The latest-effective predicate must admit re-establishment, not
+# just reversal. Final state: discipline PRESENT → SC9003 fires;
+# SC9010 silent.
+
+IFS=$'\n'
+set -o noglob
+set +o noglob   # transient disable
+set -o noglob   # re-enable; latest-wins resolves to present
+
+# Trigger: SC9003 fires here (file has discipline at end).
+plain=hello
+echo "$plain"

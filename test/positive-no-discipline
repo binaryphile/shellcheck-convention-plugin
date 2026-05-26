@@ -1,0 +1,14 @@
+#!/usr/bin/env bash
+# Fixture for SC9010 (UC-42, #17958): a file that uses quoted
+# non-tainted variable expansions but LACKS IFS+noglob discipline.
+# SC9010 should fire per-occurrence; SC9003 should be silent
+# everywhere in this file (the discipline-gating partition rule).
+
+# Would-be-SC9003 trigger: SC9010 fires here instead.
+plain=hello
+echo "$plain"
+
+# Second would-be-SC9003 trigger: SC9010 fires again (per-occurrence
+# semantics).
+greeting=world
+printf '%s\n' "$greeting"

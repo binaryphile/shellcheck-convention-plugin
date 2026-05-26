@@ -1,6 +1,13 @@
 #!/usr/bin/env bash
 # Fixture: each block must trip exactly the matching SC9xxx convention check.
 
+# IFS+noglob discipline established at file top so SC9003's "quoting
+# unnecessary" advice is sound (per #17958 discipline-gating). Without
+# this, SC9003 would be silent and SC9010 would fire on the SC9003
+# block below — see test/positive-no-discipline for the SC9010 case.
+IFS=$'\n'
+set -o noglob
+
 # SC9001: taint-suffix variable used unquoted in a splitting context.
 var_=$(printf foo)
 echo $var_
