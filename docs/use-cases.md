@@ -1,7 +1,7 @@
 # Use Cases: shellcheck-convention-plugin
 
 Cockburn-shape use cases for the IFS/noglob convention check plugin
-(SC9001-SC9007). The plugin loads dynamically into the upstream
+(SC9001-SC9010). The plugin loads dynamically into the upstream
 shellcheck fork (`binaryphile/shellcheck`); the use cases below
 describe WHAT the plugin does from three stakeholder perspectives.
 Mechanism (HOW) lives in [design.md](design.md).
@@ -273,6 +273,97 @@ the wrong shape.
   recall via `era search` returns the stale claim; either redo
   step 8 (preferred) or live with future-session ambiguity until
   someone notices.
+
+---
+
+## UC-4: Diagnose missing IFS+noglob discipline
+
+| Field | Value |
+|---|---|
+| **Scope** | An end-user's shellcheck invocation against a bash script that uses double-quoted variable expansions but lacks the `IFS=$'\n'` + `set -o noglob` discipline. |
+| **Level** | User-goal (one shellcheck run produces actionable diagnostic pointing at the ROOT cause). |
+| **Primary Actor** | End-user running shellcheck on their script(s). |
+| **Other Stakeholders** | Style Guide Author (cares the diagnostic points at the discipline, not the symptom); Plugin Maintainer (cares SC9003 and SC9010 partition the trigger space without overlap or gap). |
+
+### Preconditions
+
+- Plugin loaded per UC-2.
+- Operator enabled `unnecessary-quoting` and/or `ifs-noglob-discipline`
+  via `--enable=...` (or `--enable=all`).
+- Script being checked contains at least one `T_DoubleQuoted` token
+  enclosing a non-tainted non-special variable expansion (i.e., the
+  kind of pattern SC9003 evaluates).
+
+### Minimal Guarantee
+
+A file without IFS+noglob discipline gets at most one of {SC9003,
+SC9010} per trigger occurrence — never both, never neither when both
+are enabled. The diagnostic the operator sees correctly reflects
+whether their file's discipline is in place.
+
+### Success Guarantee (Postconditions)
+
+- File HAS discipline (`IFS=$'\n'` and `set -o noglob` both present
+  at top-level scope per the predicate in design.md §SC9003 / §SC9010):
+  SC9003 fires per redundant-quote occurrence (per-occurrence, matching
+  existing plugin convention); SC9010 silent. Operator's actionable
+  guidance: drop the quotes.
+- File LACKS discipline: SC9010 fires per would-be-SC9003 occurrence;
+  SC9003 silent. Operator's actionable guidance: add `IFS=$'\n'` and
+  `set -o noglob` at file top, then SC9003 will guide quote-removal.
+- The two checks partition cleanly via the predicate; an operator
+  enabling only one of them gets only that one's signal (e.g.,
+  `--enable=ifs-noglob-discipline` alone surfaces discipline-absence
+  hints without the SC9003 noise).
+
+### Trigger
+
+End-user runs `shellcheck` with `--enable=unnecessary-quoting` and/or
+`--enable=ifs-noglob-discipline` on a script using quoted variable
+expansions.
+
+### Main Success Scenario
+
+1. EU enables `unnecessary-quoting` and/or `ifs-noglob-discipline`
+   (typically both, often via `--enable=all`).
+2. EU runs `shellcheck script.sh`.
+3. Plugin reads each token; for each candidate trigger (quoted
+   non-tainted non-special variable expansion):
+   - Discipline-detect helper walks file's T_Script direct children
+     looking for the latest-effective canonical `IFS=$'\n'` assignment
+     AND the latest-effective `set -o noglob` / `set +o noglob`.
+   - Discipline-present → SC9003 fires at this trigger; SC9010 silent.
+   - Discipline-absent → SC9010 fires at this trigger; SC9003 silent.
+4. EU sees diagnostics; addresses by either dropping quotes (when
+   SC9003 fires) or adopting discipline (when SC9010 fires).
+
+### Extensions
+
+- **3a.** File uses `IFS=$'\n\t'` (multi-char including newline) →
+  discipline predicate returns False (canonical form requires EXACTLY
+  newline); SC9010 fires. Operator may either accept the discipline-
+  less semantics or change to exact `IFS=$'\n'`.
+- **3b.** File has `IFS=$'\n'` followed by `IFS=:` (reassignment) →
+  latest-effective wins; predicate returns False; SC9010 fires.
+- **3c.** File has `set -o noglob` followed by `set +o noglob`
+  (toggle reversal) → latest-effective wins; predicate returns False;
+  SC9010 fires.
+- **3d.** Discipline assignments appear inside `if`/`for`/`while`/
+  function body → don't count (only top-level direct children of
+  T_Script count); SC9010 fires. Operator should hoist the discipline
+  to file-top.
+- **3e.** Discipline established only via `source helpers.sh` →
+  plugin is LEXICAL/STATIC; does not follow source/eval. SC9010 fires
+  on the consuming script. Operator should inline the discipline at
+  file top for the plugin to recognize it.
+- **3f.** `IFS=$'\n' read x` (command-prefix inline assignment) →
+  not a top-level `T_Assignment` (parses as `T_SimpleCommand` with
+  assignment prefix); does NOT contribute to discipline. SC9010 fires
+  if no top-level discipline elsewhere.
+- **3g.** Operator enables only `--enable=ifs-noglob-discipline`
+  (not `unnecessary-quoting`) → SC9010 fires per occurrence in
+  discipline-absent files; SC9003 silent in all files. Useful as
+  a discoverability scan.
 
 ---
 
