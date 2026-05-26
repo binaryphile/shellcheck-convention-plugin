@@ -1,62 +1,66 @@
 #!/usr/bin/env bash
+IFS=$'\n'
+set -o noglob
 set -euo pipefail
 cd "$(dirname "$0")/.."
 
-plugin_out=$(nix build .#default     --print-out-paths --no-link)
-sc_out=$(    nix build .#shellcheck  --print-out-paths --no-link)
+plugin_out_=$(nix build .#default     --print-out-paths --no-link)
+sc_out_=$(    nix build .#shellcheck  --print-out-paths --no-link)
 
-tmp=$(mktemp -d)
-trap 'rm -rf "$tmp"' EXIT
-mkdir -p "$tmp/plugins"
-cp "$plugin_out/lib/shellcheck/plugins/libconvention-checks.so" "$tmp/plugins/"
+tmp_=$(mktemp -d)
+trap 'rm -rf "$tmp_"' EXIT
+mkdir -p "$tmp_/plugins"
+cp "$plugin_out_/lib/shellcheck/plugins/libconvention-checks.so" "$tmp_/plugins/"
 
-sc="$sc_out/bin/shellcheck"
+sc_="$sc_out_/bin/shellcheck"
 # Codes that must fire on test/positive (has IFS+noglob discipline).
 # SC9010 fires on test/positive-no-discipline + test/adversarial, NOT here.
-pos_codes=(9001 9002 9003 9004 9005 9006 9007 9008 9009)
+posCodes=(9001 9002 9003 9004 9005 9006 9007 9008 9009)
 
-pos=$("$sc" --plugin-dir "$tmp/plugins" --enable=all -f gcc test/positive 2>&1 || true)
+pos_=$("$sc_" --plugin-dir "$tmp_/plugins" --enable=all -f gcc test/positive 2>&1 || true)
 
 # Plugin now ships 10 checks (SC9001-SC9010 per #17958).
-if ! grep -qE 'Loaded plugin: libconvention-checks\.so \(10 check\(s\)\)' <<<"$pos"; then
-  printf 'FAIL: shellcheck did not log dlopen success (expected 10 checks)\n%s\n' "$pos" >&2
+if ! grep -qE 'Loaded plugin: libconvention-checks\.so \(10 check\(s\)\)' <<<"$pos_"; then
+  printf 'FAIL: shellcheck did not log dlopen success (expected 10 checks)\n%s\n' "$pos_" >&2
   exit 1
 fi
 
-for c in "${pos_codes[@]}"; do
-  if ! grep -qE "\[SC$c\]" <<<"$pos"; then
-    printf 'FAIL: SC%s not emitted on positive fixture\n%s\n' "$c" "$pos" >&2
+for c in ${posCodes[@]}; do
+  # shellcheck disable=SC9003  # regex literal needs quotes to preserve backslashes; SC9003's IFS+noglob advice doesn't apply to backslash-bearing strings
+  if ! grep -qE "\[SC$c\]" <<<"$pos_"; then
+    printf 'FAIL: SC%s not emitted on positive fixture\n%s\n' $c "$pos_" >&2
     exit 1
   fi
 done
 
 # SC9010 must NOT fire on test/positive (file has discipline; SC9003
 # handles its triggers there per the partition rule).
-if grep -qE '\[SC9010\]' <<<"$pos"; then
-  printf 'FAIL: SC9010 spuriously emitted on positive fixture (file has discipline)\n%s\n' "$pos" >&2
+if grep -qE '\[SC9010\]' <<<"$pos_"; then
+  printf 'FAIL: SC9010 spuriously emitted on positive fixture (file has discipline)\n%s\n' "$pos_" >&2
   exit 1
 fi
 
-neg=$("$sc" --plugin-dir "$tmp/plugins" --enable=all -f gcc test/negative 2>&1 || true)
+neg_=$("$sc_" --plugin-dir "$tmp_/plugins" --enable=all -f gcc test/negative 2>&1 || true)
 
 # Negative fixture must stay silent for all 10 codes.
-all_codes=("${pos_codes[@]}" 9010)
-for c in "${all_codes[@]}"; do
-  if grep -qE "\[SC$c\]" <<<"$neg"; then
-    printf 'FAIL: SC%s spuriously emitted on negative fixture\n%s\n' "$c" "$neg" >&2
+allCodes=(${posCodes[@]} 9010)
+for c in ${allCodes[@]}; do
+  # shellcheck disable=SC9003  # regex literal needs quotes to preserve backslashes (see same disable above)
+  if grep -qE "\[SC$c\]" <<<"$neg_"; then
+    printf 'FAIL: SC%s spuriously emitted on negative fixture\n%s\n' $c "$neg_" >&2
     exit 1
   fi
 done
 
 # SC9010-positive fixture: file lacks discipline; SC9010 fires at least
 # once (per-occurrence semantics), SC9003 silent (partition rule).
-nodisc=$("$sc" --plugin-dir "$tmp/plugins" --enable=all -f gcc test/positive-no-discipline 2>&1 || true)
-if ! grep -qE '\[SC9010\]' <<<"$nodisc"; then
-  printf 'FAIL: SC9010 not emitted on positive-no-discipline fixture\n%s\n' "$nodisc" >&2
+nodisc_=$("$sc_" --plugin-dir "$tmp_/plugins" --enable=all -f gcc test/positive-no-discipline 2>&1 || true)
+if ! grep -qE '\[SC9010\]' <<<"$nodisc_"; then
+  printf 'FAIL: SC9010 not emitted on positive-no-discipline fixture\n%s\n' "$nodisc_" >&2
   exit 1
 fi
-if grep -qE '\[SC9003\]' <<<"$nodisc"; then
-  printf 'FAIL: SC9003 spuriously emitted on positive-no-discipline fixture (file lacks discipline)\n%s\n' "$nodisc" >&2
+if grep -qE '\[SC9003\]' <<<"$nodisc_"; then
+  printf 'FAIL: SC9003 spuriously emitted on positive-no-discipline fixture (file lacks discipline)\n%s\n' "$nodisc_" >&2
   exit 1
 fi
 
@@ -64,25 +68,25 @@ fi
 # IFS, IFS reassign, set +o noglob, conditional, function-local,
 # command-prefix inline) and ends with overriders that guarantee
 # whole-file predicate = absent → SC9010 fires; SC9003 silent.
-adv=$("$sc" --plugin-dir "$tmp/plugins" --enable=all -f gcc test/adversarial 2>&1 || true)
-if ! grep -qE '\[SC9010\]' <<<"$adv"; then
-  printf 'FAIL: SC9010 not emitted on adversarial fixture\n%s\n' "$adv" >&2
+adv_=$("$sc_" --plugin-dir "$tmp_/plugins" --enable=all -f gcc test/adversarial 2>&1 || true)
+if ! grep -qE '\[SC9010\]' <<<"$adv_"; then
+  printf 'FAIL: SC9010 not emitted on adversarial fixture\n%s\n' "$adv_" >&2
   exit 1
 fi
-if grep -qE '\[SC9003\]' <<<"$adv"; then
-  printf 'FAIL: SC9003 spuriously emitted on adversarial fixture (file ends discipline-absent)\n%s\n' "$adv" >&2
+if grep -qE '\[SC9003\]' <<<"$adv_"; then
+  printf 'FAIL: SC9003 spuriously emitted on adversarial fixture (file ends discipline-absent)\n%s\n' "$adv_" >&2
   exit 1
 fi
 
 # Inverse adversarial: discipline toggled OFF then back ON; final
 # state = present → SC9003 fires; SC9010 silent.
-retog=$("$sc" --plugin-dir "$tmp/plugins" --enable=all -f gcc test/adversarial-retoggle 2>&1 || true)
-if ! grep -qE '\[SC9003\]' <<<"$retog"; then
-  printf 'FAIL: SC9003 not emitted on adversarial-retoggle fixture (file ends discipline-present)\n%s\n' "$retog" >&2
+retog_=$("$sc_" --plugin-dir "$tmp_/plugins" --enable=all -f gcc test/adversarial-retoggle 2>&1 || true)
+if ! grep -qE '\[SC9003\]' <<<"$retog_"; then
+  printf 'FAIL: SC9003 not emitted on adversarial-retoggle fixture (file ends discipline-present)\n%s\n' "$retog_" >&2
   exit 1
 fi
-if grep -qE '\[SC9010\]' <<<"$retog"; then
-  printf 'FAIL: SC9010 spuriously emitted on adversarial-retoggle fixture (file ends discipline-present)\n%s\n' "$retog" >&2
+if grep -qE '\[SC9010\]' <<<"$retog_"; then
+  printf 'FAIL: SC9010 spuriously emitted on adversarial-retoggle fixture (file ends discipline-present)\n%s\n' "$retog_" >&2
   exit 1
 fi
 
