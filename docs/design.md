@@ -181,6 +181,13 @@ mapping is direct; checks without a published source are tagged
   of SC9001).
 - **Pattern**: a non-taint variable expansion that's quoted in a
   splitting context where IFS+noglob makes the quoting redundant.
+- **Discipline gating** (#17958): SC9003 only fires when the file
+  satisfies the `fileHasIfsNoglobDiscipline` predicate from
+  `Convention.hs`. Files lacking the discipline get SC9010 instead
+  per the partition rule below — recommending quote-removal in a
+  file without discipline would re-expose the expansion to word-
+  splitting on default IFS (a regression). See §SC9010 for the
+  predicate definition and the partition rule.
 - **False-positive shape**: variables that legitimately could
   contain whitespace despite not having the taint suffix.
 
@@ -371,6 +378,75 @@ not sufficient context.
   1d.5 reviewed scope-boundary edge cases and the lexical-vs-path
   divergence; lexical heuristic accepted with documented over-fire
   family.
+
+### SC9010 — IFS+noglob discipline absent
+
+- **Module**: `src/IfsNoglobDiscipline.hs`
+- **Severity**: `style` (note)
+- **Always-on**: no — `cdName = "ifs-noglob-discipline"`
+- **Source rule**: bash-style-guide §3 "Enforcement" — files that
+  use double-quoted variable expansions in splitting contexts should
+  adopt `IFS=$'\n'` + `set -o noglob` at file top so the convention's
+  quoting recommendations (per SC9001/SC9003) are sound.
+- **Pattern**: a quoted non-tainted non-special variable expansion
+  in a file whose discipline predicate returns False. The predicate
+  uses LATEST-EFFECTIVE state on the DIRECT children of T_Script
+  (non-recursive walk):
+  - **IFS discipline (latest-effective)**: scan T_Script's direct
+    child list in textual order; the LAST `T_Assignment` whose lvalue
+    is `IFS` determines effective IFS. Discipline is present iff the
+    last such assignment sets the value to EXACTLY `$'\n'` (a single
+    `T_DollarSingleQuoted` whose content is literally `\n` and no
+    other characters).
+    - `IFS=$'\n'` → present.
+    - `IFS=$'\n'; IFS=:` → absent (reassigned).
+    - `IFS=$'\n\t'` → absent (multi-char; not strict newline-only).
+    - `IFS="prefix"$'\n'` → absent (concatenated; not strict).
+    - `IFS=` or absent → absent.
+  - **noglob discipline (latest-effective)**: scan T_Script's direct
+    child list for `T_SimpleCommand` invocations of `set` with `-o
+    noglob` (enable) or `+o noglob` (disable). LAST invocation wins.
+    - `set -o noglob` → present.
+    - `set -o noglob; set +o noglob` → absent (toggle reversal).
+    - `set -o noglob; set +o noglob; set -o noglob` → present (re-toggle).
+    - `set -f` (short form) → NOT accepted (canonical-form-only
+      minimum; if a real codebase uses `set -f`, file a follow-up
+      cycle to extend acceptance).
+    - No `set` invocation → absent.
+  - **Both required**: file has discipline iff IFS-present AND
+    noglob-present.
+- **Top-level scope discipline**: only DIRECT children of T_Script
+  count (non-recursive walk). Statements inside `if`/`for`/`while`/
+  `case`/subshells/`{ ... }` groups/function bodies do NOT count.
+  Example: `if false; then set -o noglob; fi` is conditional → does
+  NOT count. `IFS=$'\n' read x` is a command-prefix inline
+  assignment (parses as `T_SimpleCommand` with assignment prefix,
+  not `T_Assignment`) → does NOT count.
+- **Lexical/static, not runtime-complete**: the predicate inspects
+  the AST of the file being linted. It does NOT follow `source` /
+  `.` directives, does NOT model `eval`-generated mutations, and
+  does NOT analyze runtime semantics. A file establishing discipline
+  only via sourced helpers will be (correctly) reported as lacking
+  discipline at the lexical level — operators wanting that case
+  supported should inline the discipline at the top of the consuming
+  script, OR file a future cycle for semantic source-tracking.
+- **Partition with SC9003**: SC9003 and SC9010 partition the
+  would-be-SC9003 trigger space cleanly via the predicate. Both
+  fire PER-OCCURRENCE; the predicate determines which one fires
+  at each trigger:
+  - Discipline present → SC9003 fires per redundant-quote occurrence;
+    SC9010 silent everywhere.
+  - Discipline absent → SC9010 fires per would-be-SC9003 occurrence;
+    SC9003 silent everywhere.
+- **False-positive shape**: variables that legitimately could
+  contain whitespace despite not having the taint suffix (same as
+  SC9003's false-positive shape — the trigger pattern is shared).
+- **Implementation complexity**: per-token call walks UP the parent
+  map to find T_Script root, then iterates direct children. Bounded
+  by top-level statement count (typically < 100). Total work O(N×K)
+  where N = tokens, K = top-level statements. Acceptable for
+  interactive linting; profile-driven optimization (memoization) is
+  out of scope until measurement justifies.
 
 ## 4. Reference
 
