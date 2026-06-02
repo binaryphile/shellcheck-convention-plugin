@@ -15,7 +15,7 @@ import Test.QuickCheck.Test (quickCheckWithResult, stdArgs, maxSuccess)
 check :: CustomCheck
 check = CustomCheck {
     ccChecker = checkInclusiveLanguage,
-    ccAlwaysOn = False,
+    ccAlwaysOn = True,
     ccDescription = newCheckDescription {
         cdName = "inclusive-language",
         cdDescription = "Suggest allowlist/denylist over legacy terms in identifier names",

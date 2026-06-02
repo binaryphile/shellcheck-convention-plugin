@@ -34,9 +34,12 @@ import Test.QuickCheck.Test (quickCheckWithResult, stdArgs, maxSuccess)
 check :: CustomCheck
 check = CustomCheck {
     ccChecker     = checkX,
-    ccAlwaysOn    = False,    -- or True for always-on
+    ccAlwaysOn    = True,     -- all plugin checks are always-on; installing the
+                              -- plugin opts the user in. Suppress per-line via
+                              -- `# shellcheck disable=SC9xxx` or globally via
+                              -- `disable=SC9xxx` in .shellcheckrc.
     ccDescription = newCheckDescription {
-        cdName        = "<opt-in-name>",
+        cdName        = "<check-name>",
         cdDescription = "What this check enforces",
         cdPositive    = "<one-line bash that triggers>",
         cdNegative    = "<one-line bash that stays silent>"
@@ -122,8 +125,8 @@ end-to-end correctness coverage, see §2.3.
 
 The contract gate. Builds the plugin and the host shellcheck (both
 via nix), copies the `.so` into a temp plugin dir, runs shellcheck
-with `--enable=all` against `test/positive` and `test/negative`,
-and asserts:
+against `test/positive` and `test/negative` (no `--enable=` needed
+— all plugin checks are `ccAlwaysOn = True`), and asserts:
 
 1. Plugin logs `Loaded plugin: libconvention-checks.so (N check(s))`
    with N matching the registered count.

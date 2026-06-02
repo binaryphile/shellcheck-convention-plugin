@@ -15,7 +15,7 @@ import Test.QuickCheck.Test (quickCheckWithResult, stdArgs, maxSuccess)
 check :: CustomCheck
 check = CustomCheck {
     ccChecker = checkCmdSubNoUnderscore,
-    ccAlwaysOn = False,
+    ccAlwaysOn = True,
     ccDescription = newCheckDescription {
         cdName = "taint-assignment",
         cdDescription = "Warn when command substitution is assigned to a non-_ variable",

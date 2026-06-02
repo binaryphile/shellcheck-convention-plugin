@@ -15,7 +15,7 @@ import Test.QuickCheck.Test (quickCheckWithResult, stdArgs, maxSuccess)
 check :: CustomCheck
 check = CustomCheck {
     ccChecker = checkListMisuse,
-    ccAlwaysOn = False,
+    ccAlwaysOn = True,
     ccDescription = newCheckDescription {
         cdName = "list-array-misuse",
         cdDescription = "*List should be an IFS-serialized string (bash-style-guide §3); use plural-noun suffix for arrays",

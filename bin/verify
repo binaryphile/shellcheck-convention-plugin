@@ -17,7 +17,7 @@ sc_="$sc_out_/bin/shellcheck"
 # SC9010 fires on test/positive-no-discipline + test/adversarial, NOT here.
 posCodes=(9001 9002 9003 9004 9005 9006 9007 9008 9009)
 
-pos_=$("$sc_" --plugin-dir "$tmp_/plugins" --enable=all -f gcc test/positive 2>&1 || true)
+pos_=$("$sc_" --plugin-dir "$tmp_/plugins" -f gcc test/positive 2>&1 || true)
 
 # Plugin now ships 10 checks (SC9001-SC9010 per #17958).
 if ! grep -qE 'Loaded plugin: libconvention-checks\.so \(10 check\(s\)\)' <<<"$pos_"; then
@@ -40,7 +40,7 @@ if grep -qE '\[SC9010\]' <<<"$pos_"; then
   exit 1
 fi
 
-neg_=$("$sc_" --plugin-dir "$tmp_/plugins" --enable=all -f gcc test/negative 2>&1 || true)
+neg_=$("$sc_" --plugin-dir "$tmp_/plugins" -f gcc test/negative 2>&1 || true)
 
 # Negative fixture must stay silent for all 10 codes.
 allCodes=(${posCodes[@]} 9010)
@@ -54,7 +54,7 @@ done
 
 # SC9010-positive fixture: file lacks discipline; SC9010 fires at least
 # once (per-occurrence semantics), SC9003 silent (partition rule).
-nodisc_=$("$sc_" --plugin-dir "$tmp_/plugins" --enable=all -f gcc test/positive-no-discipline 2>&1 || true)
+nodisc_=$("$sc_" --plugin-dir "$tmp_/plugins" -f gcc test/positive-no-discipline 2>&1 || true)
 if ! grep -qE '\[SC9010\]' <<<"$nodisc_"; then
   printf 'FAIL: SC9010 not emitted on positive-no-discipline fixture\n%s\n' "$nodisc_" >&2
   exit 1
@@ -68,7 +68,7 @@ fi
 # IFS, IFS reassign, set +o noglob, conditional, function-local,
 # command-prefix inline) and ends with overriders that guarantee
 # whole-file predicate = absent → SC9010 fires; SC9003 silent.
-adv_=$("$sc_" --plugin-dir "$tmp_/plugins" --enable=all -f gcc test/adversarial 2>&1 || true)
+adv_=$("$sc_" --plugin-dir "$tmp_/plugins" -f gcc test/adversarial 2>&1 || true)
 if ! grep -qE '\[SC9010\]' <<<"$adv_"; then
   printf 'FAIL: SC9010 not emitted on adversarial fixture\n%s\n' "$adv_" >&2
   exit 1
@@ -80,7 +80,7 @@ fi
 
 # Inverse adversarial: discipline toggled OFF then back ON; final
 # state = present → SC9003 fires; SC9010 silent.
-retog_=$("$sc_" --plugin-dir "$tmp_/plugins" --enable=all -f gcc test/adversarial-retoggle 2>&1 || true)
+retog_=$("$sc_" --plugin-dir "$tmp_/plugins" -f gcc test/adversarial-retoggle 2>&1 || true)
 if ! grep -qE '\[SC9003\]' <<<"$retog_"; then
   printf 'FAIL: SC9003 not emitted on adversarial-retoggle fixture (file ends discipline-present)\n%s\n' "$retog_" >&2
   exit 1

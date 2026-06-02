@@ -14,7 +14,7 @@ import Test.QuickCheck.Test (quickCheckWithResult, stdArgs, maxSuccess)
 check :: CustomCheck
 check = CustomCheck {
     ccChecker = checkDocstring,
-    ccAlwaysOn = False,
+    ccAlwaysOn = True,
     ccDescription = newCheckDescription {
         cdName = "docstring-shape",
         cdDescription = "Docstring above a function should begin with the function name",

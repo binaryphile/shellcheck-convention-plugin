@@ -13,7 +13,7 @@ import Test.QuickCheck.Test (quickCheckWithResult, stdArgs, maxSuccess)
 check :: CustomCheck
 check = CustomCheck {
     ccChecker = checkNumericInBrackets,
-    ccAlwaysOn = False,
+    ccAlwaysOn = True,
     ccDescription = newCheckDescription {
         cdName = "numerics-in-brackets",
         cdDescription = "Warn when [[ ]] / [ ] is used for numeric comparison; prefer (( ))",

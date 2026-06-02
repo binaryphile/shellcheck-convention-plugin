@@ -25,7 +25,7 @@ import Test.QuickCheck.Test (quickCheckWithResult, stdArgs, maxSuccess)
 check :: CustomCheck
 check = CustomCheck {
     ccChecker = checkIfsNoglobDiscipline,
-    ccAlwaysOn = False,
+    ccAlwaysOn = True,
     ccDescription = newCheckDescription {
         cdName = "ifs-noglob-discipline",
         cdDescription = "Suggest adopting IFS=$'\\n' + set -o noglob when the file quotes non-tainted variables",

@@ -18,7 +18,7 @@ import Test.QuickCheck.Test (quickCheckWithResult, stdArgs, maxSuccess)
 check :: CustomCheck
 check = CustomCheck {
     ccChecker = checkUnnecessaryQuoting,
-    ccAlwaysOn = False,
+    ccAlwaysOn = True,
     ccDescription = newCheckDescription {
         cdName = "unnecessary-quoting",
         cdDescription = "Suggest removing quotes from non-_ variables under IFS/noglob",
