@@ -8,13 +8,16 @@ module Convention (
     hasListSuffix,
     hasListSuffixOnBare,
     stripTaintSuffix,
-    fileHasIfsNoglobDiscipline
+    fileHasIfsNoglobDiscipline,
+    isIntegerTyped
     ) where
 
 import Data.Char (isAsciiUpper)
-import Data.List (isSuffixOf, find)
+import Data.Foldable (toList)
+import Data.List (isPrefixOf, isSuffixOf, find)
 import qualified Data.List.NonEmpty as NE
 import qualified Data.Map as Map
+import qualified Data.Set as Set
 
 import ShellCheck.AST
 import ShellCheck.ASTLib (getPath, getWordParts)
@@ -145,3 +148,94 @@ topLevelSetNoglob stmt =
 asLiteral :: Token -> Maybe String
 asLiteral (T_NormalWord _ [T_Literal _ s]) = Just s
 asLiteral _ = Nothing
+
+-- | True iff @name@ has been declared with the bash integer attribute
+-- (`-i` flag) via @local@, @declare@, @typeset@, or @readonly@ in the
+-- scope enclosing @token@ (#36870). Used by SC9001 and SC9002 to suppress
+-- IFS/cmdsub-taint nudges on `-i` typed variables: bash coerces every
+-- assignment to an integer-typed variable to an integer (failed coercion
+-- yields 0), so the IFS-splitting and newline-in-cmdsub hazards do not
+-- apply.
+--
+-- Scope is the nearest enclosing T_Function body or T_Script (top level).
+-- Nested function bodies and subshell-creating nodes do not contribute
+-- declarations into the enclosing scope; conversely a declaration sitting
+-- in the enclosing scope IS visible to subshells nested inside it (bash
+-- subshells inherit parent variable attributes).
+--
+-- Recognised forms (`i` may be bundled with other flag chars; `-ir`, `-iA`,
+-- etc. all qualify):
+--
+--   * @local -i NAME@                — bare declaration
+--   * @declare -i NAME=VALUE@        — declaration with init
+--   * @typeset -ir NAME@             — bundled flags
+--   * @readonly -i NAME@             — readonly integer
+isIntegerTyped :: Map.Map Id Token -> Token -> String -> Bool
+isIntegerTyped parents token name =
+    case findEnclosingVarScope parents token of
+        Nothing    -> False
+        Just scope -> name `Set.member` integerDeclaredInScope scope
+
+-- | Walk parent map from @token@ to the nearest enclosing T_Function or
+-- T_Script. Returns Nothing only if the parent chain terminates without
+-- hitting one (defensive — every token in a parsed script is reachable
+-- under T_Script).
+findEnclosingVarScope :: Map.Map Id Token -> Token -> Maybe Token
+findEnclosingVarScope parents token =
+    find isVarScope (NE.toList (getPath parents token))
+  where
+    isVarScope T_Function{} = True
+    isVarScope T_Script{}   = True
+    isVarScope _            = False
+
+-- | Names declared with the `-i` flag inside @scope@'s body, NOT
+-- descending into nested function bodies or subshell-creating nodes.
+integerDeclaredInScope :: Token -> Set.Set String
+integerDeclaredInScope scope = Set.fromList (concatMap collect (scopeChildren scope))
+  where
+    collect t = concatMap declaredIntegerNames (flattenScope t)
+
+    scopeChildren (T_Function _ _ _ _ body) = [body]
+    scopeChildren (T_Script _ _ stmts)      = stmts
+    scopeChildren _                         = []
+
+-- | Walk @t@ collecting every sub-token, stopping at nodes that open a
+-- new variable scope (nested functions) or subshell isolation. Mirrors
+-- the scope-boundary discipline used by NilAvoidance.collectScope.
+flattenScope :: Token -> [Token]
+flattenScope t@(OuterToken _ inner) = case t of
+    T_Function {}        -> [t]
+    T_Subshell {}        -> [t]
+    T_DollarExpansion {} -> [t]
+    T_ProcSub {}         -> [t]
+    T_Backticked {}      -> [t]
+    T_CoProc {}          -> [t]
+    T_CoProcBody {}      -> [t]
+    _                    -> t : concatMap flattenScope (toList inner)
+
+-- | If @t@ is a @local@/@declare@/@typeset@/@readonly@ invocation with
+-- a flag bundle containing 'i', yield every var name it declares. Names
+-- come from either inline assignments (T_Assignment) or bare-name args
+-- (T_NormalWord [T_Literal]). Dash-prefixed args (flags) are excluded.
+declaredIntegerNames :: Token -> [String]
+declaredIntegerNames
+    (T_SimpleCommand _ _ (T_NormalWord _ (T_Literal _ cmd : _) : args))
+    | cmd `elem` ["local", "declare", "typeset", "readonly"]
+    , hasIntegerFlag args
+    = concatMap argName args
+  where
+    argName (T_Assignment _ _ n _ _)
+        | not (null n), not ("-" `isPrefixOf` n) = [n]
+    argName (T_NormalWord _ [T_Literal _ n])
+        | not (null n), not ("-" `isPrefixOf` n) = [n]
+    argName _ = []
+declaredIntegerNames _ = []
+
+-- | True if any arg is a bundled flag-token (`-` prefix, length ≥ 2)
+-- whose flag chars include 'i'. Single `-` is not a flag bundle (it's
+-- a positional placeholder).
+hasIntegerFlag :: [Token] -> Bool
+hasIntegerFlag = any go
+  where
+    go (T_NormalWord _ [T_Literal _ ('-':rest@(_:_))]) = 'i' `elem` rest
+    go _ = False
