@@ -80,6 +80,15 @@ SC9004):
 - `hasListSuffix :: String -> Bool` — bare name (post-strip) ends
   in `List` or `List<X>` where X is a single uppercase ASCII letter
   (a library suffix marker, e.g. `hostListQ_`).
+- `isIntegerTyped :: Map.Map Id Token -> Token -> String -> Bool` —
+  true iff the named variable has been declared with the bash integer
+  attribute (`-i` flag, possibly bundled like `-ir`/`-iA`) via
+  `local`/`declare`/`typeset`/`readonly` in the scope enclosing the
+  given token. Used by SC9001 and SC9002 to suppress the IFS/cmdsub
+  taint nudges on integer-typed variables (#36870). Scope is the
+  nearest enclosing T_Function body or T_Script; the scan stops at
+  nested function bodies and subshell-creating nodes (which open
+  separate variable-attribute scopes for the purposes of the predicate).
 
 Extending this module is the right move when ≥ 2 checks need the
 same predicate; for one-off predicates, inline them in the check
@@ -157,6 +166,15 @@ mapping is direct; checks without a published source are tagged
 - **Pattern**: a `T_DollarBraced` whose name has the `_` taint
   suffix is expanded in a word-splitting context (unquoted) — must
   be quoted to prevent IFS splitting and glob expansion.
+- **Integer-typed exception (#36870)**: SC9001 is suppressed when the
+  variable is declared with the bash integer attribute (`-i` flag) via
+  `local`/`declare`/`typeset`/`readonly` in the enclosing scope. Bash
+  coerces every assignment to a `-i`-typed variable to an integer; the
+  variable cannot hold IFS-bearing content, so the splitting hazard
+  does not apply. Scope semantics inherit from `Convention.isIntegerTyped`
+  — nearest enclosing T_Function or T_Script, no descent into nested
+  scopes. The bundled-flag form (`-ir`, `-iA`, etc.) qualifies as long
+  as `i` is in the flag set.
 - **False-positive shape**: `for var_ in ...` (loop variables are
   context-controlled, not user-input); the check excludes
   `T_ForIn` ancestors.
@@ -172,6 +190,15 @@ mapping is direct; checks without a published source are tagged
   (`hostname`, etc.). Cmdsub output may contain newlines; the
   taint-suffix convention requires capturing it into a `_`-suffixed
   variable.
+- **Integer-typed exception (#36870)**: SC9002 is suppressed when the
+  assignment LHS is declared with the bash integer attribute (`-i`
+  flag) via `local`/`declare`/`typeset`/`readonly` in the enclosing
+  scope. Bash coerces cmdsub output assigned to a `-i`-typed variable
+  to an integer (failed coercion yields 0); the captured-newline
+  hazard cannot apply. Covers both the same-line init form
+  (`local -i x=$(cmd)`) and the separated form (`local -i x=0;
+  x=$(cmd)`), since `isIntegerTyped` scans the entire enclosing
+  scope. Bundled flag sets (`-ir`, `-iA`, etc.) qualify.
 - **False-positive shape**: allowlisted commands; intentional
   newline-stripped patterns.
 

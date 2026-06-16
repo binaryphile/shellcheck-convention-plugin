@@ -31,7 +31,11 @@ checkUnquotedUnderscore token = case getExpansionName token of
         params <- ask
         let parents = parentMap params
             shell = shellType params
-        when (needsQuoting shell parents token) $
+        -- Integer-typed exception (#36870): bash coerces every assignment
+        -- to a `-i`-typed variable to an integer; the IFS-splitting hazard
+        -- doesn't apply.
+        when (needsQuoting shell parents token
+              && not (isIntegerTyped parents token name)) $
             err (getId token) 9001 $
                 "Variable $" ++ name ++ " contains IFS characters and must be quoted."
     _ -> return ()
@@ -88,6 +92,41 @@ prop_sc9001_nontaint2 = verifyNot checkUnquotedUnderscore "echo $varname"
 
 -- Tests: suppression
 prop_sc9001_suppressed = verifyNot checkUnquotedUnderscore "# shellcheck disable=SC9001\necho $var_"
+
+-- Tests: integer-typed exception (#36870). Bash `-i` coerces every
+-- assignment to integer, so the IFS-splitting hazard cannot apply.
+
+-- Same scope: `local -i` decl suppresses SC9001 at the read site.
+prop_sc9001_intTyped_local = verifyNot checkUnquotedUnderscore
+    "foo() { local -i rc_=0; rc_=$?; echo $rc_; }"
+
+-- declare -i at script scope likewise suppresses.
+prop_sc9001_intTyped_declare = verifyNot checkUnquotedUnderscore
+    "declare -i n_=0; echo $n_"
+
+-- typeset -i is equivalent to declare -i.
+prop_sc9001_intTyped_typeset = verifyNot checkUnquotedUnderscore
+    "foo() { typeset -i x_=0; echo $x_; }"
+
+-- Bundled flag chars (`-ir`, `-iA`, etc.) — any flag set containing `i`.
+prop_sc9001_intTyped_bundled = verifyNot checkUnquotedUnderscore
+    "foo() { local -ir frozen_=0; echo $frozen_; }"
+
+-- readonly -i NAME also confers the integer attribute.
+prop_sc9001_intTyped_readonly = verifyNot checkUnquotedUnderscore
+    "readonly -i locked_=0; echo $locked_"
+
+-- Un-typed path still fires (no -i; regression guard).
+prop_sc9001_unTyped_stillFires = verifyCode checkUnquotedUnderscore 9001
+    "foo() { local rc_=0; rc_=$?; echo $rc_; }"
+
+-- Other flag (no `i`) does NOT suppress.
+prop_sc9001_otherFlag_stillFires = verifyCode checkUnquotedUnderscore 9001
+    "foo() { local -r rc_=0; echo $rc_; }"
+
+-- Sibling-function isolation: `-i` declared in g must not protect f.
+prop_sc9001_siblingFunctionIsolation = verifyCode checkUnquotedUnderscore 9001
+    "f() { local rc_=0; echo $rc_; } g() { local -i rc_=0; echo $rc_; }"
 
 return []
 runTests = $(forAllProperties) (quickCheckWithResult (stdArgs { maxSuccess = 1 }))
