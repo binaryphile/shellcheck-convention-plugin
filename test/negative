@@ -74,3 +74,58 @@ bar9009c() {
     local -n REF=$1
     REF=value
 }
+
+# SC9001/SC9002 integer-typed exception (#36870).
+# Bash coerces every assignment to a `-i`-typed variable to an integer
+# (failed coercion yields 0); the IFS-splitting and captured-newline
+# hazards the taint convention guards against cannot apply, so neither
+# SC9001 nor SC9002 should fire on `-i` declared variables. Reads in
+# these blocks are UNQUOTED (so SC9010/SC9003 stay silent in this
+# discipline-absent file — the partition rule for SC9003/SC9010 is
+# tested elsewhere).
+
+# SC9002-silent below: same-line cmdsub init under `local -i`.
+
+bar9002i_a() {
+    local -i count=$(nproc)
+    (( count > 0 )) && return 0
+}
+
+# SC9002-silent below: later cmdsub assignment to a previously `-i`
+# declared variable in scope.
+
+bar9002i_b() {
+    local -i n=0
+    n=$(nproc)
+    (( n > 0 )) && return 0
+}
+
+# SC9002-silent below: `declare -i` at top level (script-scope visibility).
+
+declare -i topInt=$(nproc)
+(( topInt > 0 )) && :
+
+# SC9002-silent below: bundled flag set containing `i` (`-ir`).
+
+bar9002i_c() {
+    local -ir frozen=$(nproc)
+    (( frozen > 0 )) && return 0
+}
+
+# SC9001-silent below: `-i`-typed `_`-suffix var read unquoted (`-i`
+# protects from IFS splitting; suffix is naming-style residue).
+
+bar9001i_a() {
+    local -i rc_=0
+    rc_=$?
+    echo $rc_
+}
+
+# SC9001-silent below: arithmetic-assignment site composed with an
+# unquoted later read of the `-i`-typed var.
+
+bar9001i_b() {
+    local -i parallel_=0
+    (( parallel_ = $(nproc 2>/dev/null || echo 4) ))
+    echo $parallel_
+}
