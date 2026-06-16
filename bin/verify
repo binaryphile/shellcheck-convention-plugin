@@ -90,4 +90,41 @@ if grep -qE '\[SC9010\]' <<<"$retog_"; then
   exit 1
 fi
 
-printf 'OK: SC9001-SC9010 emitted across positive/positive-no-discipline/adversarial/adversarial-retoggle fixtures; negative silent; dlopen confirmed\n'
+# Fragment mode (#37003): SC_PLUGIN_FRAGMENT=1 suppresses SC9001/SC9002
+# when the visible scope has no `-i` decl (the consumer's fragment-mode
+# signal asserts the decl may sit outside the snippet).
+
+# Baseline: non-fragment mode on test/fragment-positive must fire BOTH
+# SC9001 and SC9002 (proves the fixture actually exercises the codes).
+fragBase_=$("$sc_" --plugin-dir "$tmp_/plugins" -f gcc test/fragment-positive 2>&1 || true)
+for c in 9001 9002; do
+  # shellcheck disable=SC9003  # regex literal needs quotes to preserve backslashes (see same disable above)
+  if ! grep -qE "\[SC$c\]" <<<"$fragBase_"; then
+    printf 'FAIL: SC%s not emitted on fragment-positive fixture in non-fragment mode\n%s\n' $c "$fragBase_" >&2
+    exit 1
+  fi
+done
+
+# Fragment mode: SC_PLUGIN_FRAGMENT=1 must suppress SC9001 AND SC9002
+# on the same fixture.
+fragOn_=$(SC_PLUGIN_FRAGMENT=1 "$sc_" --plugin-dir "$tmp_/plugins" -f gcc test/fragment-positive 2>&1 || true)
+for c in 9001 9002; do
+  # shellcheck disable=SC9003  # regex literal needs quotes to preserve backslashes (see same disable above)
+  if grep -qE "\[SC$c\]" <<<"$fragOn_"; then
+    printf 'FAIL: SC%s spuriously emitted on fragment-positive fixture in fragment mode (SC_PLUGIN_FRAGMENT=1)\n%s\n' $c "$fragOn_" >&2
+    exit 1
+  fi
+done
+
+# Fragment mode must NOT bleed into other checks. test/positive in
+# fragment mode still fires the non-scope-aware codes (SC9003-SC9009).
+posFrag_=$(SC_PLUGIN_FRAGMENT=1 "$sc_" --plugin-dir "$tmp_/plugins" -f gcc test/positive 2>&1 || true)
+for c in 9003 9004 9005 9006 9007 9008 9009; do
+  # shellcheck disable=SC9003  # regex literal needs quotes to preserve backslashes (see same disable above)
+  if ! grep -qE "\[SC$c\]" <<<"$posFrag_"; then
+    printf 'FAIL: SC%s suppressed in fragment mode on positive fixture (only SC9001/SC9002 should suppress)\n%s\n' $c "$posFrag_" >&2
+    exit 1
+  fi
+done
+
+printf 'OK: SC9001-SC9010 emitted across positive/positive-no-discipline/adversarial/adversarial-retoggle fixtures; negative silent; dlopen confirmed; fragment-mode suppresses SC9001/SC9002 only\n'

@@ -1,0 +1,24 @@
+#!/usr/bin/env bash
+# Fixture: a fragment that would have its enclosing `local -i NAME_`
+# declaration in the full file, but doesn't include it here.
+#
+# Without SC_PLUGIN_FRAGMENT=1 (non-fragment mode), the plugin treats
+# this as a complete file: no visible `-i` decl ⇒ SC9001 fires on the
+# unquoted read of `$rc_`, and SC9002 fires on the cmdsub assignment
+# to non-_-suffixed `count`.
+#
+# With SC_PLUGIN_FRAGMENT=1 (#37003 fragment mode), both suppress:
+# the consumer's fragment-mode signal asserts the visible scope is
+# incomplete, so the un-typed appearance may be an artifact of the
+# fragment boundary.
+
+IFS=$'\n'
+set -o noglob
+
+# SC9001 in non-fragment mode; silent in fragment mode.
+rc_=$?
+echo $rc_
+
+# SC9002 in non-fragment mode; silent in fragment mode.
+count=$(nproc)
+(( count > 0 )) && :
