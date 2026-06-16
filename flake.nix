@@ -27,6 +27,7 @@
               ghc -dynamic -shared -fPIC \
                 -isrc \
                 src/Convention.hs \
+                src/FragmentMode.hs \
                 src/TaintSuffix.hs \
                 src/MutualExclusive.hs \
                 src/TaintAssignment.hs \

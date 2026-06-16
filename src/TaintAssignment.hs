@@ -6,6 +6,7 @@ import ShellCheck.ASTLib
 import ShellCheck.AnalyzerLib
 import ShellCheck.Checks.Custom.Base
 import Convention
+import FragmentMode (isFragmentMode)
 import ShellCheck.Interface
 
 import Data.Char (isLower)
@@ -37,7 +38,11 @@ checkCmdSubNoUnderscore t@(T_Assignment id _ name _ value)
         -- assigned to a `-i`-typed variable to an integer (failed coercion
         -- yields 0); the captured-newline hazard the taint suffix guards
         -- against cannot apply, so the SC9002 nudge is unsound here.
-        when (not (isIntegerTyped (parentMap params) t name)) $
+        -- Fragment-mode exception (#37003): the consumer asserts the
+        -- snippet may not include its enclosing scope, so absent a
+        -- visible `-i` decl, the decl may sit outside the fragment.
+        when (not (isIntegerTyped (parentMap params) t name)
+              && not isFragmentMode) $
             warn id 9002 $
                 "Command substitution assigned to " ++ name
                 ++ " -- use " ++ name ++ "_ if it may contain newlines."

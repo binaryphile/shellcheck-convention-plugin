@@ -6,6 +6,7 @@ import ShellCheck.ASTLib
 import ShellCheck.AnalyzerLib
 import ShellCheck.Checks.Custom.Base
 import Convention
+import FragmentMode (isFragmentMode)
 import ShellCheck.Interface
 
 -- ask, when re-exported from Base
@@ -34,8 +35,12 @@ checkUnquotedUnderscore token = case getExpansionName token of
         -- Integer-typed exception (#36870): bash coerces every assignment
         -- to a `-i`-typed variable to an integer; the IFS-splitting hazard
         -- doesn't apply.
+        -- Fragment-mode exception (#37003): when the consumer asserts the
+        -- snippet may not include its enclosing scope, no visible `-i`
+        -- decl ⇒ assume the decl is outside the fragment, suppress.
         when (needsQuoting shell parents token
-              && not (isIntegerTyped parents token name)) $
+              && not (isIntegerTyped parents token name)
+              && not isFragmentMode) $
             err (getId token) 9001 $
                 "Variable $" ++ name ++ " contains IFS characters and must be quoted."
     _ -> return ()
