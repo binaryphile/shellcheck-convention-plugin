@@ -1,0 +1,10 @@
+{"spec":1,"source":"era-cold-vs-warm_test.bash:18-45 installMocks","arm":"BSG","iterations":1,"converged":true,"output_chars":1280,"final_code_path":"/tmp/expA-spec1-BSG/spec.bash"}
+{"spec":1,"source":"era-cold-vs-warm_test.bash:18-45 installMocks","arm":"Default","iterations":2,"converged":true,"output_chars":1620,"final_code_path":"/tmp/expA-spec1-Default/spec.bash"}
+{"spec":2,"source":"era-queue-forecast_test.bash:14-23 assert","arm":"BSG","iterations":2,"converged":true,"output_chars":2080,"final_code_path":"/tmp/expA-spec2-BSG/spec.bash"}
+{"spec":2,"source":"era-queue-forecast_test.bash:14-23 assert","arm":"Default","iterations":3,"converged":true,"output_chars":940,"final_code_path":"/tmp/expA-spec2-Default/spec.bash"}
+{"spec":3,"source":"era-soak_test.bash:11-38 setupTestEnv","arm":"BSG","iterations":1,"converged":true,"output_chars":1100,"final_code_path":"/tmp/expA-spec3-BSG/spec.bash"}
+{"spec":3,"source":"era-soak_test.bash:11-38 setupTestEnv","arm":"Default","iterations":3,"converged":true,"output_chars":3050,"final_code_path":"/tmp/expA-spec3-Default/spec.bash"}
+{"spec":4,"source":"era_unwrap_test.bash:17-27 test_unwrap_envelopeSuccess_objectData","arm":"BSG","iterations":1,"converged":true,"output_chars":1280,"final_code_path":"/tmp/expA-spec4-BSG/spec.bash"}
+{"spec":4,"source":"era_unwrap_test.bash:17-27 test_unwrap_envelopeSuccess_objectData","arm":"Default","iterations":2,"converged":true,"output_chars":800,"final_code_path":"/tmp/expA-spec4-Default/spec.bash"}
+{"spec":5,"source":"githooks_pre_commit_test.bash:29-51 setupTempRepo","arm":"BSG","iterations":4,"converged":true,"output_chars":3226,"final_code_path":"/tmp/expA-spec5-BSG/spec.bash"}
+{"spec":5,"source":"githooks_pre_commit_test.bash:29-51 setupTempRepo","arm":"Default","iterations":2,"converged":true,"output_chars":850,"final_code_path":"/tmp/expA-spec5-Default/spec.bash"}
