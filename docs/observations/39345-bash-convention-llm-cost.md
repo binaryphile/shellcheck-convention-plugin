@@ -2,6 +2,44 @@
 
 shellcheck-convention-plugin / 2026-06-19 / Claude Opus 4.7
 
+## Correction (post-cycle, 2026-06-19) — READ BEFORE PROCEEDING
+
+This memo's "final-byte ratio 2.18x" headline and the framing of Naming Policy headers as "agent-self-imposed boilerplate" were **both wrong**. Caught during the `/imprint` retrospective.
+
+**The 2.18x was entirely comment overhead.** Stripping ALL comments (per-file Naming Policy header + per-function docstrings) and comparing code-only bytes:
+
+| Spec | BSG code-only | Default code-only | Ratio |
+|---|---:|---:|---:|
+| 1 | 418 | 592 | 0.71 |
+| 2 | 257 | 288 | 0.89 |
+| 3 | 612 | 789 | 0.78 |
+| 4 | 433 | 361 | 1.20 |
+| 5 | 380 | 391 | 0.97 |
+| **Ratio of means** | | | **0.87** |
+
+BSG arm produces SMALLER code than Default at the code-only level — below parity.
+
+**Both write-cost signals now point the same direction**:
+- Iteration ratio: 0.80x (BSG converges in fewer cycles)
+- Code-only byte ratio: 0.87x (BSG smaller)
+
+**Why the original framing was wrong**: per existing era memory `94f1f7ac6e18` ("Every file has a Naming Policy header"), the header is convention-required prose. Per-function docstrings are in the plugin's mechanical scope. Counting comments as "cost" is the wrong frame — they're documentation, which is the convention's stated value, not its overhead.
+
+**Unifying frame**: the BSG convention SWAPS quote-noise for comment-signal. It removes defensive quotes (the prelude makes them unnecessary) and adds docstrings + Naming Policy headers (carrying readability signal the code alone doesn't). Net byte cost on actual code is ~neutral or slightly favorable. Both the quote-removal and the comment-addition serve the same readability principle the operator stated at the session's start.
+
+**Recommended action (corrected)**: no workflow change. The body's recommendation to "instruct agents to skip Naming Policy comments for non-API-public functions" would push agents AWAY from convention conformance. **DO NOT follow it.**
+
+**Authoritative corrections in era**:
+- `1b7ccc450169` — corrected code-only byte ratios; supersedes the body's 2.18x headline
+- `c827e1ae3962` — unifying frame (convention swaps quote-noise for comment-signal)
+- `56100feb6faf` — feedback memory: catch operator's narrow framings when broader correction is obvious (the surfacing path for this correction)
+
+The cycle's METHODOLOGY findings (pre-reg cost at N=5; 3 pre-reg failure modes documented) stand unaffected.
+
+The body below is preserved as the historical record of the cycle's original findings + framing; this correction takes precedence on the volume-cost dimension.
+
+---
+
 ## TL;DR
 
 Local-workflow-calibration pilot measuring the cost of producing bash under the operator's IFS+noglob + `_`-suffix discipline (BSG; enforced by shellcheck-convention-plugin SC9001-SC9010) vs default-bash behavior at N=5.
