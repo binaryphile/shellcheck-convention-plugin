@@ -54,18 +54,25 @@ checkUnnecessaryQuoting token = case getExpansionName token of
         ++ map show [1..9 :: Int]
 
 -- | True when the token is inside a T_DoubleQuoted that serves a protective purpose
--- (i.e., removing the DQ would expose contents to word splitting).
+-- (i.e., removing the DQ would expose contents to word splitting) AND the
+-- expansion is the DOUBLE-QUOTED STRING'S ONLY CONTENT (#12026). When the
+-- double-quoted string also carries literal text -- "label: $var" -- the
+-- quotes are necessary for that literal text (spaces, punctuation), not for
+-- $var; "unnecessary quoting" doesn't apply, so SC9003 must not fire there.
 -- Skips T_DollarDoubleQuoted ($"...") which is localization, not protective quoting.
 isInProtectiveQuotes :: Shell -> Map.Map Id Token -> Token -> Bool
 isInProtectiveQuotes shell parents t = fromMaybe False $ do
     dq <- findDQ (NE.tail $ getPath parents t)
-    return $ not (isQuoteFree shell parents dq)
+    return $ not (isQuoteFree shell parents dq) && isSoleContent dq
   where
     findDQ [] = Nothing
     findDQ (x:xs) = case x of
         T_DoubleQuoted {} -> Just x
         T_DollarDoubleQuoted {} -> Nothing  -- skip $"..."
         _ -> findDQ xs
+
+    isSoleContent (T_DoubleQuoted _ list) = length list == 1
+    isSoleContent _ = False
 
 -- discipline prefix: every prop_ test must establish IFS+noglob
 -- discipline at file top now that SC9003 is discipline-gated (#17958),
@@ -78,6 +85,10 @@ prop_sc9003_echo = verifyCode checkUnnecessaryQuoting 9003 (disciplineHdr ++ "va
 prop_sc9003_arg = verify checkUnnecessaryQuoting (disciplineHdr ++ "x=1; cmd \"$x\"")
 
 -- Tests: should NOT fire (file has discipline; non-trigger pattern)
+-- #12026: literal text alongside the expansion makes the quotes necessary
+-- for that text, not for the variable -- "unnecessary quoting" doesn't apply.
+prop_sc9003_literalPrefix = verifyNot checkUnnecessaryQuoting (disciplineHdr ++ "plain=x; echo \"value: $plain\"")
+prop_sc9003_literalPrefixAndSuffix = verifyNot checkUnnecessaryQuoting (disciplineHdr ++ "plain=x; echo \"prefix-$plain-suffix\"")
 prop_sc9003_tainted = verifyNot checkUnnecessaryQuoting (disciplineHdr ++ "var_=x; echo \"$var_\"")
 prop_sc9003_unquoted = verifyNot checkUnnecessaryQuoting (disciplineHdr ++ "var=hello; echo $var")
 prop_sc9003_special_at = verifyNot checkUnnecessaryQuoting (disciplineHdr ++ "echo \"$@\"")

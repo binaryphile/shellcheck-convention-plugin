@@ -61,17 +61,24 @@ checkIfsNoglobDiscipline token = case getExpansionName token of
 
 -- | True when the token is inside a T_DoubleQuoted that serves a
 -- protective purpose (i.e., removing the DQ would expose contents to
--- word splitting). Mirrors UnnecessaryQuoting's helper.
+-- word splitting) AND the expansion is the double-quoted string's only
+-- content (#12026). Mirrors UnnecessaryQuoting's helper -- same fix:
+-- "label: $var" needs its quotes for the literal text regardless of
+-- IFS/noglob discipline, so suggesting discipline-adoption to enable
+-- unquoting is equally wrong here as SC9003 firing directly would be.
 isInProtectiveQuotes :: Shell -> Map.Map Id Token -> Token -> Bool
 isInProtectiveQuotes shell parents t = fromMaybe False $ do
     dq <- findDQ (NE.tail $ getPath parents t)
-    return $ not (isQuoteFree shell parents dq)
+    return $ not (isQuoteFree shell parents dq) && isSoleContent dq
   where
     findDQ [] = Nothing
     findDQ (x:xs) = case x of
         T_DoubleQuoted {} -> Just x
         T_DollarDoubleQuoted {} -> Nothing
         _ -> findDQ xs
+
+    isSoleContent (T_DoubleQuoted _ list) = length list == 1
+    isSoleContent _ = False
 
 -- Tests: should fire (would-be-SC9003 trigger in a file without discipline)
 prop_sc9010_fires_no_discipline = verifyCode checkIfsNoglobDiscipline 9010 "var=hello; echo \"$var\""
@@ -82,6 +89,10 @@ prop_sc9010_fires_ifs_reassigned = verifyCode checkIfsNoglobDiscipline 9010 "IFS
 prop_sc9010_fires_noglob_toggled_off = verifyCode checkIfsNoglobDiscipline 9010 "IFS=$'\\n'; set -o noglob; set +o noglob; var=hello; echo \"$var\""
 
 -- Tests: should NOT fire (file has discipline, OR token isn't a candidate)
+-- #12026: literal text alongside the expansion means the quotes are
+-- needed for that text regardless of discipline -- mirrors the
+-- UnnecessaryQuoting fix.
+prop_sc9010_silent_literalPrefix = verifyNot checkIfsNoglobDiscipline "plain=x; echo \"value: $plain\""
 prop_sc9010_silent_with_discipline = verifyNot checkIfsNoglobDiscipline "IFS=$'\\n'\nset -o noglob\nvar=hello\necho \"$var\""
 prop_sc9010_silent_noglob_re_toggled_on = verifyNot checkIfsNoglobDiscipline "IFS=$'\\n'\nset -o noglob\nset +o noglob\nset -o noglob\nvar=hello\necho \"$var\""
 prop_sc9010_silent_tainted = verifyNot checkIfsNoglobDiscipline "var_=hello; echo \"$var_\""
