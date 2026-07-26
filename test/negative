@@ -112,20 +112,101 @@ bar9002i_c() {
     (( frozen > 0 )) && return 0
 }
 
-# SC9001-silent below: `-i`-typed `_`-suffix var read unquoted (`-i`
-# protects from IFS splitting; suffix is naming-style residue).
+# SC9001-silent below: `-i`-typed var read unquoted (`-i` protects from
+# IFS splitting; per SC9011 these are no longer `_`-suffixed -- that
+# residue was itself the SC9011 antipattern, fixed here rather than
+# routed around).
 
 bar9001i_a() {
-    local -i rc_=0
-    rc_=$?
-    echo $rc_
+    local -i rc=0
+    rc=$?
+    echo $rc
 }
 
 # SC9001-silent below: arithmetic-assignment site composed with an
 # unquoted later read of the `-i`-typed var.
 
 bar9001i_b() {
-    local -i parallel_=0
-    (( parallel_ = $(nproc 2>/dev/null || echo 4) ))
-    echo $parallel_
+    local -i parallel=0
+    (( parallel = $(nproc 2>/dev/null || echo 4) ))
+    echo $parallel
+}
+
+# SC9011-silent: bare declaration, even with only-later-safe-writes --
+# emptiness is reachable at declaration (R1/R2 findings).
+
+bar9011a() {
+    local mode_
+    if [[ $1 ]]; then
+        mode_="a"
+    else
+        mode_="b"
+    fi
+    echo "$mode_"
+}
+bar9011a x
+
+# SC9011-silent: bare `-i` declaration -- also NOT guaranteed non-empty
+# (R2 finding, empirically verified: an unassigned `-i` local expands empty).
+
+bar9011b() {
+    local -i count_
+    count_=5
+    echo "$count_"
+}
+bar9011b
+
+# SC9011-silent: command-substitution and arithmetic-expansion initializers
+# are not provably-safe literals.
+
+bar9011c() {
+    local x_=$(echo no)
+    echo "$x_"
+}
+bar9011c
+
+bar9011d() {
+    local x_=$((1+1))
+    echo "$x_"
+}
+bar9011d
+
+# SC9011-silent: `+=` anywhere in scope disqualifies.
+
+bar9011e() {
+    local x_="no"
+    x_+="more"
+    echo "$x_"
+}
+bar9011e
+
+# SC9011-silent: escape/unknown-mutator disqualifier -- a bare-name
+# occurrence as a command argument conservatively disqualifies (also
+# covers read/printf -v/mapfile targets, the same AST shape).
+
+bar9011f() {
+    local x_="yes"
+    mycustomsetter x_ ""
+    echo "$x_"
+}
+
+bar9011g() {
+    local x_="no"
+    read -r x_
+    echo "$x_"
+}
+
+# SC9011-silent: eval/source/. anywhere in scope disqualifies every
+# candidate, including recursive `builtin`/`command` wrapper forms.
+
+bar9011h() {
+    local x_="no"
+    eval 'x_=yes'
+    echo "$x_"
+}
+
+bar9011i() {
+    local x_="no"
+    command builtin eval 'x_=yes'
+    echo "$x_"
 }

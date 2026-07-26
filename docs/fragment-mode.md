@@ -31,10 +31,12 @@ explicitly signalled the visible scope is incomplete.
 
 ## What it does not affect
 
-* **SC9003-SC9010**: not scope-aware. They evaluate local AST shape
-  (quoting, identifier shape, numeric form, IFS+noglob discipline,
-  etc.) and remain correct on fragments. Fragment mode leaves them
-  untouched.
+* **SC9003-SC9011**: not scope-aware (in the fragment-mode sense —
+  each is self-contained within whatever's visible in the snippet; none
+  depends on an `-i` declaration lookup outside it). They evaluate
+  local AST shape (quoting, identifier shape, numeric form, IFS+noglob
+  discipline, sentinel-literal writes, etc.) and remain correct on
+  fragments. Fragment mode leaves them untouched.
 * **Base shellcheck SC1xxx parse errors**: emitted by the shellcheck
   parser before any plugin check runs. The plugin .so cannot suppress
   these. Consumers that lint fragments which may be incomplete (mid-
@@ -65,5 +67,5 @@ guard can stop seeing SC9001/SC9002 false-positives from the
 1. Without `SC_PLUGIN_FRAGMENT`, SC9001 + SC9002 fire (proves the
    fixture actually exercises the path).
 2. With `SC_PLUGIN_FRAGMENT=1`, both suppress on the same fixture.
-3. With `SC_PLUGIN_FRAGMENT=1`, SC9003-SC9009 still fire on
+3. With `SC_PLUGIN_FRAGMENT=1`, SC9003-SC9009 and SC9011 still fire on
    `test/positive` (no bleed into the non-scope-aware checks).

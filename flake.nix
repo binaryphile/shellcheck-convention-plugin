@@ -38,6 +38,7 @@
                 src/ListInit.hs \
                 src/NilAvoidance.hs \
                 src/IfsNoglobDiscipline.hs \
+                src/SentinelLiteral.hs \
                 src/Plugin.hs \
                 -o libconvention-checks.so \
                 -no-hs-main

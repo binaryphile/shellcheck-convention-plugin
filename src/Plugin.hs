@@ -18,6 +18,7 @@
       SC9008 - *List should be IFS-serialized string, not array (list-array-misuse)
       SC9009 - Uninitialized-then-appended variable (nil-avoidance)
       SC9010 - IFS+noglob discipline absent (ifs-noglob-discipline)
+      SC9011 - Unwarranted _ suffix on never-empty literal sentinel (sentinel-literal)
 -}
 module Plugin where
 
@@ -36,6 +37,7 @@ import qualified Docstring
 import qualified ListInit
 import qualified NilAvoidance
 import qualified IfsNoglobDiscipline
+import qualified SentinelLiteral
 
 foreign export ccall plugin_api_version :: IO CInt
 foreign export ccall plugin_init :: IO (StablePtr [CustomCheck])
@@ -54,5 +56,6 @@ plugin_init = newStablePtr [
     Docstring.check,           -- SC9007
     ListInit.check,            -- SC9008
     NilAvoidance.check,        -- SC9009
-    IfsNoglobDiscipline.check  -- SC9010
+    IfsNoglobDiscipline.check, -- SC9010
+    SentinelLiteral.check      -- SC9011
   ]

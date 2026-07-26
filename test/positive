@@ -48,3 +48,12 @@ foo9009() {
     echo "${items[@]}"
 }
 foo9009
+
+# SC9011: _-suffixed local initialized to and only ever reassigned a
+# non-empty, IFS-free literal -- the suffix is unwarranted (era#80703 anchor).
+foo9011() {
+    local taskSeen_="no"
+    taskSeen_="yes"
+    echo "$taskSeen_"
+}
+foo9011

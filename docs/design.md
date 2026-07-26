@@ -478,6 +478,131 @@ not sufficient context.
   interactive linting; profile-driven optimization (memoization) is
   out of scope until measurement justifies.
 
+### SC9011 — Unwarranted `_` suffix on never-empty literal sentinel
+
+- **Module**: `src/SentinelLiteral.hs`
+- **Severity**: `warn`
+- **Always-on**: yes — `cdName = "sentinel-literal"`
+- **Provisional numbering**: tentative — two other queued tasks
+  (#69103, #25303) independently guessed "SC9011" for unrelated
+  proposed checks before either shipped. Whichever check ships first
+  legitimately claims SC9011; the others renumber to the next free
+  slot (SC9012+) at their own implementation time. Purely mechanical
+  if it happens (`cdName`, this doc-comment, `Plugin.hs`'s
+  registration comment, `bin/verify`'s `posCodes`).
+- **Source rule**: bash-style-guide "Quoting" §"two-state literal
+  sentinels" — `local taskSeen_` is unwarranted when the variable is
+  only ever assigned a fixed literal that can't be empty or
+  IFS-bearing (era#80703 anchor: `taskSeen_`/`sessionSeen_`/
+  `wonSeen_`/`strayAbsent_` all suffixed despite never holding
+  anything but `"yes"`/`"no"`). Mirror image of SC9009 (suffix absent
+  but needed vs. suffix present but unwarranted).
+- **Design history**: this check went through 5 adversarial `/grade`
+  rounds (D → D → C → C → A) before shipping; the design below
+  reflects the FINAL, approved shape, not the original proposal —
+  three of the six R1 findings alone were severe enough that the
+  original draft would not have fired on its own motivating example.
+  Full grader transcripts and the finding-by-finding trail: cascadia
+  task #80805's plan file (`~/.claude/plans/80805-sc9011-sentinel-
+  literal.md`, Revision history section).
+- **Candidacy — two disjoint sub-rules** (R1/R2 findings): a
+  `local`/`declare`/`typeset` argument that is an ASSIGNMENT (not a
+  bare name — a bare-name-only filter, the initial draft's mistake,
+  misses every initialized declaration, including the anchor itself),
+  name ending in `_`, excluding `-n`/`-p`/`-f`/`-F` (nameref/
+  query-form) and `-a`/`-A` (array/assoc — not this rule's concern).
+
+  - **String candidates** (no `-i`): MUST carry an initializer that is
+    itself a safe literal (see below). A bare declaration is never a
+    candidate — emptiness is reachable immediately after a bare
+    declaration regardless of later writes (R1/R2 finding — "all
+    writes are literal" alone doesn't prove "never empty from
+    construction").
+  - **Integer candidates** (`-i` present): also require an
+    initializer — **empirically verified** a bare `-i` declaration
+    expands to the empty string, NOT `0` (R2 finding; the initial
+    draft's "implicit 0" premise was wrong:
+    `bash -c 'foo() { local -i n_; [[ -z $n_ ]] && echo EMPTY; }; foo'`
+    prints `EMPTY`). Once initialized, no literal-shape check is
+    needed on the initializer or any later write — `-i` coerces any
+    successfully-assigned RHS to a non-empty numeric string regardless
+    of input shape (also verified: `local -i n_=$1` with `$1` unset →
+    `n_="0"`).
+- **Literal-value primitive**: `ShellCheck.ASTLib.getLiteralString`
+  (R1 finding — a hand-rolled `T_NormalWord _ [T_Literal _ s]` pattern
+  misses quote-wrapper AST shapes `getLiteralString` already resolves
+  uniformly across single-quoted, double-quoted-without-expansion, and
+  unquoted forms). Safe iff `Just s` where `s` is non-empty and
+  contains no default-IFS characters (space, tab, newline).
+- **Write classification**, bounded to strictly after the candidate's
+  own declaration position (R1 finding — unbounded scope-wide
+  collection lets an unrelated same-named write contaminate the
+  judgment; no upper bound is needed — a later redeclaration's own
+  writes simply also count toward THIS candidate, over-inclusive but
+  harmless, and the redeclaration is independently its own candidate):
+
+  - String: plain `T_Assignment Assign` → safe iff `getLiteralString`
+    of the value is a safe literal. `x_=$(( ... ))` is an ordinary
+    assignment whose value contains an expansion, so it is
+    `NotProvenLiteral` (R1 finding — this is NOT the same AST shape as
+    the arithmetic-command form below; conflating them was the
+    original draft's mistake). `+=` is never safe.
+  - String only: bare arithmetic-command assignment (`(( x_ = ... ))`,
+    reusing `NilAvoidance.arithAssignsOf`'s chained-assignment
+    recursion) → always safe (a successfully-assigned arithmetic
+    result is always non-empty numeric text).
+  - Integer: every recognized write is safe unconditionally (see
+    Candidacy above).
+- **Escape/unknown-mutator disqualifier** (R2 finding): a bare
+  literal-word occurrence of the candidate's name as a command
+  argument — anywhere in scope, not position-bounded — disqualifies.
+  Deliberately blunt (an incidental bare-word collision unrelated to
+  the variable also disqualifies; accepted false-negative cost) but
+  closes the false-positive path an invisible custom mutator
+  (`mycustomsetter x_ ...`) would otherwise leave open. As a side
+  effect this SAME rule subsumes `read`/`printf -v`/`mapfile` target
+  disqualification — those targets are the identical AST shape (a
+  bare-word command argument), so no separate modeled-writer
+  classification is needed for those three forms.
+- **Scope-wide `eval`/`source`/`.` disqualifier** (R2/R3/R4 findings):
+  bash's dynamic function-call scoping lets a callee mutate a caller's
+  `local` without redeclaring it, and `eval` can construct an
+  assignment to any name at runtime — neither is detectable by a
+  per-token AST walk. Every candidate in a scope containing a command
+  whose EFFECTIVE name (after recursively resolving a literal
+  `command`/`builtin` wrapper prefix, including execution-mode
+  options/`--`) is `eval`, `source`, or `.` is disqualified. `command
+  -v`/`-V` (anywhere among combined short flags) is introspection, NOT
+  execution, and must NOT disqualify (R4 finding). A single-level
+  strip is insufficient — chained forms (`command builtin eval ...`)
+  need recursive resolution (R4 finding).
+- **Known, accepted, documented limitations** (R2/R3 findings —
+  narrowing the claim rather than chasing unbounded soundness; the
+  same class of limitation `NilAvoidance`/SC9009 already accepts):
+
+  - **Dynamic-scope callee mutation without `eval`/`source`**: a
+    called function assigning to the caller's local by name (bash's
+    non-lexical function scoping), with no bare-name argument passed —
+    undetectable by a per-token walk with no interprocedural analysis.
+  - **Loop back-edges**: "strictly after this declaration" is a
+    lexical/source-order property, not a runtime-execution-order
+    property; a same-scope redeclaration inside a loop body can have a
+    textually-earlier write execute after a prior iteration's
+    declaration at runtime. `NilAvoidance` has the identical lexical
+    (non-CFG) scope model.
+  - **Arbitrary shell aliases** resolving to `eval`/`source`/`.` are
+    not handled — shell-state-dependent, not resolvable from the AST
+    alone.
+  - Both are acceptable for an opt-in-style convention linter
+    (suppress per site with `# shellcheck disable=SC9011`).
+- **Deferred (tracked)**: extending literal-safety detection to
+  `printf -v` (no format specifiers, no extra args) and `read -r NAME
+  <<< "literal"` (single target, literal here-string) — currently both
+  are caught by the generic escape disqualifier (correctly
+  conservative, not a defect) rather than proven safe. Filed as
+  cascadia task #86907; no trigger, pure discretionary deferral
+  contingent on SC9011 proving useful in practice first.
+
 ## 4. Reference
 
 - Host plugin system: `binaryphile/shellcheck` `docs/design.md` and
