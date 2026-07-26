@@ -550,6 +550,55 @@ not sufficient context.
     result is always non-empty numeric text).
   - Integer: every recognized write is safe unconditionally (see
     Candidacy above).
+  - String only: `read -r NAME <<< "literal"` (task #86907) → safe iff
+    `IFS` is not scope-risky (see `ifsMayBeNonDefault` below) AND the
+    here-string word, after truncating to `read`'s own first-line-only
+    semantics and then trimming leading/trailing default-IFS
+    whitespace, resolves to a non-empty, IFS-free, NUL-free literal.
+    The here-string's redirect must target the DEFAULT fd (`read`
+    always consumes fd 0 regardless of what other fds carry —
+    `read -r x_ 3<<< "yes"` is NOT recognized). Multiple here-strings,
+    missing `-r`, or more than one target name fall through to the
+    generic escape disqualifier, unchanged.
+  - String only: `printf -v NAME "literal"` (task #86907, exactly 4
+    words — no format specifiers, no extra args, structurally
+    guaranteed by the shape match itself) → safe iff the format word
+    resolves to a non-empty, IFS-free, NUL-free literal containing
+    neither a backslash nor a `%` (conservative — printf's own escape
+    grammar and `%%`→`%` collapse are not modeled) AND not beginning
+    with `-` (bash's `printf` only recognizes `-v var` as an option;
+    ANY other format-position argument starting with `-` — including a
+    bare `--` or `-v` — is parsed as an invalid OPTION, not the
+    format, and `printf -v x_ "-x"` errors, leaving `x_` UNCHANGED
+    rather than assigning `"-x"`; empirically verified against real
+    bash).
+  - Both new forms are recognized via one `recognizeWrite` function —
+    the single source of truth for "is this write site one of these
+    two exact shapes" — whose output simultaneously supplies (a) the
+    position-keyed `WriteShape` the safety judgment above consumes and
+    (b) the command-id skip-set that exempts the site from the escape
+    disqualifier below. This structural coupling exists specifically
+    so a command can never be exempted from the disqualifier without
+    also having received an independent safety verdict — see the
+    escape-disqualifier bullet's note on `mapfile`.
+  - `ifsMayBeNonDefault`: a blunt, scope-wide, conservative
+    disqualifier (same style as the eval/source/. disqualifier below)
+    — if `IFS` is assigned, appended, or referenced as a bare command
+    argument (`unset IFS`, `local IFS`, a per-command prefix assignment
+    like `IFS=y read ...`, etc.) ANYWHERE in the scope, every
+    `read`-here-string candidate in that scope is judged unsafe
+    unconditionally, since the trim logic above assumes default `IFS`.
+    Over-conservative when the `IFS` touch is unrelated to the specific
+    read site — accepted, same philosophy as the rest of this list.
+  - Command-shadowing disqualifier: `read`/`printf` can be shadowed by
+    a same-named shell function, giving either command arbitrary
+    mutation semantics no static AST shape can bound. A whole-script
+    scan (`allFunctionNames`, walking `Parameters`'s `rootNode` rather
+    than just the current function-scope's own body) collects every
+    `T_Function` name in the file; if `"read"` or `"printf"` is among
+    them, recognition of that command's shape is suppressed file-wide
+    — blunt (disqualifies globally, not just at call-sites textually
+    reachable from the shadowing definition) but sound.
 - **Safe expansion forms** (`isSafeExpansionWord`, task #87046 — a live-
   test against real cascadia code found `local out_ rc_=0; out_=$(...)
   || rc_=$?` should fire on `rc_` but didn't, since the original design
@@ -612,11 +661,14 @@ not sufficient context.
   Deliberately blunt (an incidental bare-word collision unrelated to
   the variable also disqualifies; accepted false-negative cost) but
   closes the false-positive path an invisible custom mutator
-  (`mycustomsetter x_ ...`) would otherwise leave open. As a side
-  effect this SAME rule subsumes `read`/`printf -v`/`mapfile` target
-  disqualification — those targets are the identical AST shape (a
-  bare-word command argument), so no separate modeled-writer
-  classification is needed for those three forms.
+  (`mycustomsetter x_ ...`) would otherwise leave open. `mapfile`
+  targets remain fully subsumed by this rule — no shape for `mapfile`
+  makes the same safety guarantee (it always produces an array, a
+  different candidate class entirely). `read`/`printf -v` targets are
+  carved OUT of this disqualifier (task #86907) ONLY for the two exact
+  shapes documented in Write classification above — every other
+  `read`/`printf -v` invocation shape remains fully subsumed here,
+  unchanged.
 - **Scope-wide `eval`/`source`/`.` disqualifier** (R2/R3/R4 findings):
   bash's dynamic function-call scoping lets a callee mutate a caller's
   `local` without redeclaring it, and `eval` can construct an
@@ -646,15 +698,27 @@ not sufficient context.
   - **Arbitrary shell aliases** resolving to `eval`/`source`/`.` are
     not handled — shell-state-dependent, not resolvable from the AST
     alone.
-  - Both are acceptable for an opt-in-style convention linter
-    (suppress per site with `# shellcheck disable=SC9011`).
-- **Deferred (tracked)**: extending literal-safety detection to
-  `printf -v` (no format specifiers, no extra args) and `read -r NAME
-  <<< "literal"` (single target, literal here-string) — currently both
-  are caught by the generic escape disqualifier (correctly
-  conservative, not a defect) rather than proven safe. Filed as
-  cascadia task #86907; no trigger, pure discretionary deferral
-  contingent on SC9011 proving useful in practice first.
+  - **Alias/builtin-disable shadowing of `read`/`printf`** (task
+    #86907's command-shadowing disqualifier only detects same-named
+    `T_Function` definitions): `alias read=...`/`enable -n read` are a
+    DIFFERENT shadowing mechanism, same class of environment-dependent,
+    not-resolvable-from-a-single-file-AST limitation as the
+    `eval`/`source`/`.`-aliasing gap immediately above.
+  - All are acceptable for an opt-in-style convention linter (suppress
+    per site with `# shellcheck disable=SC9011`).
+- **Delivered**: task #86907 extended literal-safety detection to
+  `printf -v NAME "literal"` (no format specifiers, no extra args) and
+  `read -r NAME <<< "literal"` (single target, default fd, literal
+  here-string) — previously both were caught by the generic escape
+  disqualifier (correctly conservative, not a defect) rather than
+  proven safe. Went through 3 adversarial `/grade` rounds (C → C → A);
+  see the plan file (`~/.claude/plans/86907-jaunty-launching-
+  pretzel.md`) for the full finding-by-finding absorption trail
+  (wrong-fd here-strings, first-line-only `read` semantics vs. a naive
+  blanket IFS-trim, non-default-`IFS` risk, ANSI-C/NUL literal
+  truncation via `decodeEscapes`, prefix-redirect position-anchor
+  choice, printf leading-hyphen option-parsing, and `read`/`printf`
+  command-shadowing).
 
 ## 4. Reference
 

@@ -57,3 +57,28 @@ foo9011() {
     echo "$taskSeen_"
 }
 foo9011
+
+# SC9011: read -r NAME <<< "literal" / printf -v NAME "literal" are
+# provably-safe writes when the literal clears every guard (default fd,
+# single line, default IFS, non-empty, IFS-free, NUL-free, no leading
+# hyphen for printf) -- #86907.
+foo9011j() {
+    local x_="no"
+    read -r x_ <<< "yes"
+    echo "$x_"
+}
+foo9011j
+
+foo9011k() {
+    local x_="no"
+    printf -v x_ "yes"
+    echo "$x_"
+}
+foo9011k
+
+foo9011l() {
+    local x_="no"
+    <<< "yes" read -r x_
+    echo "$x_"
+}
+foo9011l

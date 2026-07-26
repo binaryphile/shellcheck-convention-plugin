@@ -182,8 +182,10 @@ bar9011e() {
 bar9011e
 
 # SC9011-silent: escape/unknown-mutator disqualifier -- a bare-name
-# occurrence as a command argument conservatively disqualifies (also
-# covers read/printf -v/mapfile targets, the same AST shape).
+# occurrence as a command argument conservatively disqualifies. mapfile
+# targets remain fully covered by this disqualifier (no proven-safe
+# shape for it). read -r x_ WITHOUT a here-string (below) is the
+# shape-boundary regression guard for #86907's read/printf-v carve-out.
 
 bar9011f() {
     local x_="yes"
@@ -194,6 +196,136 @@ bar9011f() {
 bar9011g() {
     local x_="no"
     read -r x_
+    echo "$x_"
+}
+
+# SC9011-silent: read -r NAME <<< "literal" / printf -v NAME "literal"
+# match the RECOGNIZED shape but fail the narrow literal-safety test, or
+# don't match the exact shape at all -- #86907. (Command-shadowing of
+# read/printf is a WHOLE-SCRIPT-scoped disqualifier -- deliberately
+# tested only via the module's own QuickCheck props, each parsed as an
+# independent script, rather than here, where defining a same-named
+# function would disqualify every OTHER read/printf fixture below it in
+# this same shared file.)
+
+bar9011j() {
+    local x_="no"
+    read -r x_ <<< "a b"
+    echo "$x_"
+}
+
+bar9011k() {
+    local x_="no"
+    read -r x_ <<< "   "
+    echo "$x_"
+}
+
+bar9011l() {
+    local x_="no"
+    read -r x_ y <<< "a b"
+    echo "$x_"
+}
+
+bar9011m() {
+    local x_="no"
+    read x_ <<< "yes"
+    echo "$x_"
+}
+
+bar9011n() {
+    local x_="no"
+    read -r x_ 3<<< "yes"
+    echo "$x_"
+}
+
+bar9011o() {
+    local x_="no"
+    read -r x_ 0<<< "yes"
+    echo "$x_"
+}
+
+bar9011p() {
+    local x_="no"
+    read -r x_ <<< $'\nyes'
+    echo "$x_"
+}
+
+bar9011q() {
+    local x_="no"
+    read -r x_ <<< "a" <<< "b"
+    echo "$x_"
+}
+
+bar9011r() {
+    local x_="no"
+    IFS=y read -r x_ <<< "y"
+    echo "$x_"
+}
+
+bar9011s() {
+    local x_="no"
+    read -r x_ <<< $'\0suffix'
+    echo "$x_"
+}
+
+bar9011t() {
+    local x_="no"
+    read -r x_ < <(echo yes)
+    echo "$x_"
+}
+
+bar9011v() {
+    local x_="no"
+    printf -v x_ "a b"
+    echo "$x_"
+}
+
+bar9011w() {
+    local x_="no"
+    printf -v x_ ""
+    echo "$x_"
+}
+
+bar9011x() {
+    local x_="no"
+    printf -v x_ "a\tb"
+    echo "$x_"
+}
+
+bar9011y() {
+    local x_="no"
+    printf -v x_ "100%%"
+    echo "$x_"
+}
+
+bar9011z() {
+    local x_="no"
+    printf -v x_ $'\0suffix'
+    echo "$x_"
+}
+
+bar9011aa() {
+    local x_="no"
+    printf -v x_ "-x"
+    echo "$x_"
+}
+
+bar9011ab() {
+    local x_="no"
+    printf -v x_ "--"
+    echo "$x_"
+}
+
+bar9011ac() {
+    local x_="no"
+    printf -v x_ "-v"
+    echo "$x_"
+}
+
+bar9011ae() {
+    local x_="no"
+    printf -v x_ "yes"
+    eval "$1"
     echo "$x_"
 }
 
