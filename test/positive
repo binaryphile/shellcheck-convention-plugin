@@ -41,6 +41,9 @@ docfn() { :; }
 # SC9008: *List suffix used with array initializer; *List should be IFS-string (§3).
 xList=(a b c)
 
+# SC9013: *Lists suffix used with scalar initializer; *Lists should be a true array (§3).
+xLists=foo
+
 # SC9009: array declared without init, first materialized via += (§6).
 foo9009() {
     local items

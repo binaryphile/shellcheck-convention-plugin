@@ -50,6 +50,11 @@ bareFn() { :; }
 octopi=(inky blinky pinky clyde)
 widgets=("$@")
 
+# SC9013-silent: *Lists suffix used with array initializer (the correct §3 form).
+xLists=(a b c)
+xLists[0]=foo
+xLists+=foo
+
 # SC9009-silent: init at declaration (the §6 canonical form).
 
 bar9009a() {

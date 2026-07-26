@@ -761,6 +761,49 @@ not sufficient context.
   introduced by this check; out of scope for this cycle to fix (would
   need its own jeeves-repo cycle).
 
+### SC9013 — `*Lists` should be a true bash array
+
+- **Module**: `src/ListsInit.hs`
+- **Severity**: `warn`
+- **Always-on**: yes — `cdName = "lists-scalar-misuse"`
+- **Source rule**: bash-style-guide §3 — mirror image of SC9008's
+  decision criterion. `*List` (singular) = IFS-serialized scalar
+  string; `*Lists` (plural) = a true bash array whose elements may
+  contain IFS characters. SC9008 only enforced the scalar direction
+  (warns when `*List` is initialized as an array); nothing previously
+  flagged the inverse — a `*Lists`-suffixed variable initialized as a
+  scalar. This check closes that gap (task #22860).
+- **Pattern**: `T_Assignment id Assign name [] value` where the
+  variable name ends in `Lists` or `Lists<X>` (uppercase X library
+  marker) AND the value is NOT a `T_Array` literal. Suggests dropping
+  to the singular `*List` form (best-effort rename, mirroring SC9008's
+  `pluralize`).
+
+  Restricted to `Assign` mode with empty `indices` (a bare,
+  shape-establishing assignment) — this is NOT cosmetic. Unlike
+  SC9008's forward direction (an array-literal RHS can only appear on
+  a bare `Assign`-mode, unindexed LHS in valid bash, so ignoring those
+  fields is safe), the inverse direction has no such guarantee: a
+  non-array RHS does NOT prove scalar misuse when the assignment is
+  `xLists[0]=foo` (indexed element-assignment — already correctly
+  array-shaped by construction) or `xLists+=foo` (append mode
+  presupposes prior declaration state the check can't see). Absorbed
+  from an R1 `/grade` SEND BACK during plan review (grade C→A across 2
+  rounds; see plan `~/.claude/plans/22860-hashed-spinning-sky.md`).
+- **Mutual exclusion with SC9004**: the style guide also states `_`
+  and `*Lists` are mutually exclusive on arrays (mirroring the
+  existing `_`+`*List` check SC9004 already enforces for scalars).
+  Extending SC9004 to cover this is deferred — task #87842, no
+  trigger, pure deferral (1b scope decision).
+- **False-positive shape (accepted, mirrors SC9008's own documented
+  `declare -a` blind spot)**: `declare -a xLists=foo` / `local -a
+  xLists=foo` assigns `foo` to `xLists[0]` in bash (the `-a` flag
+  makes it an array despite the scalar-looking RHS), but
+  `T_Assignment` doesn't see the wrapping `T_SimpleCommand`'s `-a`
+  flag, so this check spuriously fires. Deferred edge case; parent-
+  command flag lookup adds disproportionate code for the gain, same
+  rationale as SC9008.
+
 ## 4. Reference
 
 - Host plugin system: `binaryphile/shellcheck` `docs/design.md` and

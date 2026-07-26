@@ -20,6 +20,7 @@
       SC9010 - IFS+noglob discipline absent (ifs-noglob-discipline)
       SC9011 - Unwarranted _ suffix on never-empty literal sentinel (sentinel-literal)
       SC9012 - Double-quoted literal should be single-quoted (single-quote-default)
+      SC9013 - *Lists should be a true bash array, not scalar (lists-scalar-misuse)
 -}
 module Plugin where
 
@@ -36,6 +37,7 @@ import qualified Numerics
 import qualified Inclusive
 import qualified Docstring
 import qualified ListInit
+import qualified ListsInit
 import qualified NilAvoidance
 import qualified IfsNoglobDiscipline
 import qualified SentinelLiteral
@@ -60,5 +62,6 @@ plugin_init = newStablePtr [
     NilAvoidance.check,        -- SC9009
     IfsNoglobDiscipline.check, -- SC9010
     SentinelLiteral.check,     -- SC9011
-    SingleQuoteDefault.check   -- SC9012
+    SingleQuoteDefault.check,  -- SC9012
+    ListsInit.check            -- SC9013
   ]

@@ -36,6 +36,7 @@
                 src/Inclusive.hs \
                 src/Docstring.hs \
                 src/ListInit.hs \
+                src/ListsInit.hs \
                 src/NilAvoidance.hs \
                 src/IfsNoglobDiscipline.hs \
                 src/SentinelLiteral.hs \
