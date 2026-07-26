@@ -483,12 +483,12 @@ not sufficient context.
 - **Module**: `src/SentinelLiteral.hs`
 - **Severity**: `warn`
 - **Always-on**: yes — `cdName = "sentinel-literal"`
-- **Provisional numbering**: tentative — two other queued tasks
-  (#69103, #25303) independently guessed "SC9011" for unrelated
-  proposed checks before either shipped. Whichever check ships first
-  legitimately claims SC9011; the others renumber to the next free
-  slot (SC9012+) at their own implementation time. Purely mechanical
-  if it happens (`cdName`, this doc-comment, `Plugin.hs`'s
+- **Numbering resolved**: two other queued tasks (#69103, #25303) had
+  independently guessed "SC9011" for unrelated proposed checks before
+  either shipped. This check shipped first (task #80805), so SC9011 is
+  now its permanent number; #69103/#25303 will renumber to the next
+  free slot (SC9012+) at their own implementation time — purely
+  mechanical if it happens (`cdName`, this doc-comment, `Plugin.hs`'s
   registration comment, `bin/verify`'s `posCodes`).
 - **Source rule**: bash-style-guide "Quoting" §"two-state literal
   sentinels" — `local taskSeen_` is unwarranted when the variable is

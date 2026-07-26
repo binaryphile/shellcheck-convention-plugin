@@ -31,12 +31,24 @@ explicitly signalled the visible scope is incomplete.
 
 ## What it does not affect
 
-* **SC9003-SC9011**: not scope-aware (in the fragment-mode sense —
-  each is self-contained within whatever's visible in the snippet; none
-  depends on an `-i` declaration lookup outside it). They evaluate
-  local AST shape (quoting, identifier shape, numeric form, IFS+noglob
-  discipline, sentinel-literal writes, etc.) and remain correct on
-  fragments. Fragment mode leaves them untouched.
+* **SC9003-SC9011**: none depends on an `-i` declaration lookup
+  *outside* the visible snippet, so `SC_PLUGIN_FRAGMENT` has no effect
+  on any of them — they don't need the off-switch SC9001/SC9002 do.
+  SC9003-SC9010 evaluate local AST shape (quoting, identifier shape,
+  numeric form, IFS+noglob discipline) and are genuinely self-contained
+  on any fragment. **SC9011 is a partial exception** (IMPL /grade
+  finding, task #80805): it makes a scope-wide universal claim (every
+  write after declaration, every bare-name occurrence, every
+  `eval`/`source`/`.` anywhere in the enclosing scope must be safe/
+  absent). A fragment that's truncated *before* a later disqualifying
+  write, escape occurrence, or `eval`/`source` call that lives further
+  down in the same complete function can cause SC9011 to warn on the
+  fragment even though the full file would correctly stay silent —
+  the opposite failure direction from SC9001/SC9002's issue (which
+  produces false positives from a MISSING declaration, not a missing
+  disqualifying write). Fragment mode does not currently address this;
+  it isn't in scope for `SC_PLUGIN_FRAGMENT`'s existing `-i`-lookup
+  mechanism.
 * **Base shellcheck SC1xxx parse errors**: emitted by the shellcheck
   parser before any plugin check runs. The plugin .so cannot suppress
   these. Consumers that lint fragments which may be incomplete (mid-
