@@ -156,8 +156,8 @@ bar9011b() {
 }
 bar9011b
 
-# SC9011-silent: command-substitution and arithmetic-expansion initializers
-# are not provably-safe literals.
+# SC9011-silent: command-substitution initializer is not a provably-safe
+# literal or a recognized safe-expansion form.
 
 bar9011c() {
     local x_=$(echo no)
@@ -165,11 +165,12 @@ bar9011c() {
 }
 bar9011c
 
-bar9011d() {
-    local x_=$((1+1))
-    echo "$x_"
-}
-bar9011d
+# NOTE: `local x_=$((1+1))` used to live here as an SC9011-silent
+# fixture. Task #87046 reversed that decision (era#80805 closeout
+# finding) -- $(( expr )) used directly as a plain assignment's RHS is
+# now a recognized safe-expansion form (same "always a numeral"
+# guarantee as the bare arithmetic-command form). The positive
+# counterpart now lives in test/positive.
 
 # SC9011-silent: `+=` anywhere in scope disqualifies.
 

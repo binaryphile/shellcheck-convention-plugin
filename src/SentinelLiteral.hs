@@ -2,7 +2,7 @@
 module SentinelLiteral (check, SentinelLiteral.runTests) where
 
 import ShellCheck.AST
-import ShellCheck.ASTLib (getLiteralString)
+import ShellCheck.ASTLib (getBracedReference, getLiteralString, oversimplify)
 import ShellCheck.AnalyzerLib
 import ShellCheck.Checks.Custom.Base
 import ShellCheck.Interface
@@ -69,12 +69,13 @@ analyzeScope stmts = do
 -- (R2 finding: `-i` coerces every successful assignment to a non-empty
 -- numeric string regardless of the RHS's own shape -- empirically
 -- verified). String candidates require the value to resolve to a
--- non-empty, IFS-free literal (via getLiteralString); a bare arithmetic-
--- command assignment (`(( x = ... ))`) is always safe by construction;
--- `+=` is never safe.
+-- non-empty, IFS-free literal (via getLiteralString) OR one of the
+-- provably-safe expansion forms (via isSafeExpansionWord); a bare
+-- arithmetic-command assignment (`(( x = ... ))`) is always safe by
+-- construction; `+=` is never safe.
 isSafeFor :: Bool -> WriteShape -> Bool
 isSafeFor True  _                    = True
-isSafeFor False (LiteralAssign val)  = isSafeLiteralWord val
+isSafeFor False (LiteralAssign val)  = isSafeLiteralWord val || isSafeExpansionWord val
 isSafeFor False ArithAssign          = True
 isSafeFor False AppendWrite          = False
 
@@ -140,6 +141,49 @@ isSafeLiteralWord w = case getLiteralString w of
     _ -> False
   where
     isIFSChar c = c `elem` " \t\n"
+
+-- | A word whose SOLE content (optionally wrapped in one layer of
+-- T_DoubleQuoted -- quoting doesn't change these values' safety, so both
+-- `x_=$?` and `x_="$?"` are recognized; verified via AST dump that
+-- quoting adds exactly one such wrapper, not more) is one of a small set
+-- of expansions that are provably non-empty and IFS-free by bash's own
+-- semantics, even though they aren't literals:
+--
+--   * T_DollarArithmetic (`$(( expr ))` as the entire word) -- either the
+--     expression evaluates successfully, producing a numeral string
+--     (digits, optional leading '-', never empty, never IFS-bearing), or
+--     evaluation fails and the OUTER assignment does not complete (it
+--     never assigns an empty or partial result). Same guarantee already
+--     granted to the bare arithmetic-command form (ArithAssign).
+--   * T_DollarBraced where isCountingReference holds -- covers bare `$#`
+--     and `${#var}`/`${#arr[@]}` (indexed or associative) uniformly,
+--     since all three have raw content starting with '#' (confirmed via
+--     AST dump, not inferred) -- a count is always >= 0, and "0" is a
+--     non-empty string.
+--   * T_DollarBraced whose braced reference is exactly "?" or "$" --
+--     bare `$?`/`$$` (confirmed via AST dump: both are T_DollarBraced
+--     with the braced flag False, same constructor as `${...}` forms).
+--
+-- Deliberately NOT included: `$LINENO` (empirically verified
+-- unset-sensitive -- `unset LINENO` makes it read empty and reassignable
+-- to arbitrary content, the same statefulness class as `$RANDOM`/
+-- `$SECONDS` below), `$!` (empty until a background job exists in this
+-- shell), `$RANDOM`/`$SECONDS` (survive garbage reassignment via bash's
+-- re-seeding behavior but go genuinely empty after `unset` -- stateful,
+-- scope-order-dependent, this check has no `unset`-tracking machinery),
+-- `$_` (context-dependent content), `$PPID` (reassignment semantics
+-- unverified).
+isSafeExpansionWord :: Token -> Bool
+isSafeExpansionWord (T_NormalWord _ [inner]) = isSafeExpansionInner inner
+isSafeExpansionWord _ = False
+
+isSafeExpansionInner :: Token -> Bool
+isSafeExpansionInner (T_DoubleQuoted _ [inner]) = isSafeExpansionInner inner
+isSafeExpansionInner (T_DollarArithmetic _ _) = True
+isSafeExpansionInner t@(T_DollarBraced _ _ innerWord) =
+    isCountingReference t ||
+    getBracedReference (concat (oversimplify innerWord)) `elem` ["?", "$"]
+isSafeExpansionInner _ = False
 
 -- | Every write to `name` strictly after `declStart` (R1 finding: writes
 -- must be bounded to after the candidate's own declaration position, not
@@ -255,11 +299,43 @@ prop_sc9011_bareIntegerDecl     = verifyNot checkSentinelLiteral "foo() { local 
 
 -- C. Negative -- unsafe initializer or unsafe reassignment.
 prop_sc9011_cmdsubInit          = verifyNot checkSentinelLiteral "foo() { local x_=$(echo no); echo \"$x_\"; }"
-prop_sc9011_dollarArithInit     = verifyNot checkSentinelLiteral "foo() { local x_=$((1+1)); echo \"$x_\"; }"
 prop_sc9011_emptyInit           = verifyNot checkSentinelLiteral "foo() { local x_=\"\"; echo \"$x_\"; }"
 prop_sc9011_ifsCharInit         = verifyNot checkSentinelLiteral "foo() { local x_=\"a b\"; echo \"$x_\"; }"
 prop_sc9011_appendAfterSafe     = verifyNot checkSentinelLiteral "foo() { local x_=\"no\"; x_+=\"more\"; echo \"$x_\"; }"
 prop_sc9011_cmdsubReassign      = verifyNot checkSentinelLiteral "foo() { local x_=\"no\"; x_=$(echo yes); echo \"$x_\"; }"
+
+-- J. Positive -- $(( expr )) used directly as a plain assignment's RHS
+-- (R1/R2 findings: reversing the original design's arbitrary AST-shape
+-- exclusion -- this has the same "always a numeral" guarantee as the
+-- bare arithmetic-command form).
+prop_sc9011_dollarArithInit     = verifyCode checkSentinelLiteral 9011 "foo() { local x_=$((1+1)); echo \"$x_\"; }"
+prop_sc9011_dollarArithReassign = verifyCode checkSentinelLiteral 9011 "foo() { local x_=\"no\"; x_=$((1+1)); echo \"$x_\"; }"
+
+-- K. Positive -- provably-safe expansion forms, bare and quoted, as
+-- initializer AND as later-write (era#80805 closeout live-test found
+-- rc_=$? should fire; broadened to the full verified-safe set).
+prop_sc9011_exitStatusInit      = verifyCode checkSentinelLiteral 9011 "foo() { true; local rc_=$?; echo \"$rc_\"; }"
+prop_sc9011_exitStatusReassign  = verifyCode checkSentinelLiteral 9011 "foo() { local rc_=\"no\"; false; rc_=$?; echo \"$rc_\"; }"
+prop_sc9011_exitStatusQuoted    = verifyCode checkSentinelLiteral 9011 "foo() { local rc_=\"no\"; false; rc_=\"$?\"; echo \"$rc_\"; }"
+prop_sc9011_pidInit             = verifyCode checkSentinelLiteral 9011 "foo() { local pid_=$$; echo \"$pid_\"; }"
+prop_sc9011_positionalCountInit = verifyCode checkSentinelLiteral 9011 "foo() { local count_=$#; echo \"$count_\"; }"
+prop_sc9011_stringLengthInit    = verifyCode checkSentinelLiteral 9011 "foo() { local y=abc; local len_=${#y}; echo \"$len_\"; }"
+prop_sc9011_arrayLengthInit     = verifyCode checkSentinelLiteral 9011 "foo() { local arr=(a b); local n_=${#arr[@]}; echo \"$n_\"; }"
+
+-- L. Negative -- explicit exclusions verified NOT unconditionally safe.
+prop_sc9011_bgPidExcluded       = verifyNot checkSentinelLiteral "foo() { local pid_=$!; echo \"$pid_\"; }"
+prop_sc9011_underscoreExcluded  = verifyNot checkSentinelLiteral "foo() { true; local last_=$_; echo \"$last_\"; }"
+prop_sc9011_linenoExcluded      = verifyNot checkSentinelLiteral "foo() { local line_=$LINENO; echo \"$line_\"; }"
+
+-- M. #87110 characterization -- broader arithmetic-write acceptance was
+-- already correct (verified via AST dump: TA_Assignment's operator field
+-- is wildcarded, and collectScope recurses unconditionally into nested
+-- T_DollarArithmetic); these tests prove and document it, asserting the
+-- specific target each shape fires on.
+prop_sc9011_arithPlusEquals     = verifyCode checkSentinelLiteral 9011 "foo() { local x_=\"no\"; (( x_ += 1 )); echo \"$x_\"; }"
+prop_sc9011_arithChainedFirst   = verifyCode checkSentinelLiteral 9011 "foo() { local x_=\"no\"; (( x_ = y = 1 )); echo \"$x_\"; }"
+prop_sc9011_arithChainedSecond  = verifyCode checkSentinelLiteral 9011 "foo() { local y_=\"no\"; (( x = y_ = 1 )); echo \"$y_\"; }"
+prop_sc9011_arithNestedSideEffect = verifyCode checkSentinelLiteral 9011 "foo() { local x_=\"no\"; y=$(( x_ = 1 )); echo \"$x_\"; }"
 
 -- D. Negative -- escape/unknown-mutator disqualifier (also covers
 -- read/printf -v/mapfile targets, which share the same bare-word shape).

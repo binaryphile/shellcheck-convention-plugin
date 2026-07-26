@@ -542,17 +542,70 @@ not sufficient context.
   harmless, and the redeclaration is independently its own candidate):
 
   - String: plain `T_Assignment Assign` → safe iff `getLiteralString`
-    of the value is a safe literal. `x_=$(( ... ))` is an ordinary
-    assignment whose value contains an expansion, so it is
-    `NotProvenLiteral` (R1 finding — this is NOT the same AST shape as
-    the arithmetic-command form below; conflating them was the
-    original draft's mistake). `+=` is never safe.
+    of the value is a safe literal, OR the value is one of the safe
+    expansion forms below (`isSafeExpansionWord`). `+=` is never safe.
   - String only: bare arithmetic-command assignment (`(( x_ = ... ))`,
     reusing `NilAvoidance.arithAssignsOf`'s chained-assignment
     recursion) → always safe (a successfully-assigned arithmetic
     result is always non-empty numeric text).
   - Integer: every recognized write is safe unconditionally (see
     Candidacy above).
+- **Safe expansion forms** (`isSafeExpansionWord`, task #87046 — a live-
+  test against real cascadia code found `local out_ rc_=0; out_=$(...)
+  || rc_=$?` should fire on `rc_` but didn't, since the original design
+  treated ANY expansion in the RHS as unsafe): a word whose SOLE content
+  (optionally wrapped in one `T_DoubleQuoted` layer — quoting doesn't
+  change these values' safety, and adds exactly one such wrapper,
+  confirmed via AST dump, so both `x_=$?` and `x_="$?"` are recognized)
+  is one of:
+
+  - `T_DollarArithmetic` (`$(( expr ))` as the entire word, e.g.
+    `x_=$(( 1 + 1 ))`) — the original design (R1 of #80805) arbitrarily
+    disqualified this AST shape while accepting the bare
+    arithmetic-command form; #87046 reversed that: either the
+    expression evaluates successfully, producing a numeral string
+    (digits, optional leading `-`, never empty, never IFS-bearing), or
+    evaluation fails and the OUTER assignment doesn't complete (never
+    assigns an empty/partial result) — same guarantee already granted
+    to the bare command form.
+  - `T_DollarBraced` where `ShellCheck.AnalyzerLib.isCountingReference`
+    holds — covers bare `$#` and `${#var}`/`${#arr[@]}` (indexed or
+    associative) uniformly, since all three have raw content starting
+    with `#` (confirmed via AST dump: `$#` IS `T_DollarBraced`, not a
+    separate constructor as initially doubted during grading).
+  - `T_DollarBraced` whose braced reference is exactly `"?"` or `"$"` —
+    bare `$?`/`$$` (confirmed via AST dump: `T_DollarBraced` with the
+    braced flag `False`, same constructor `${...}` forms use).
+  - Explicitly excluded (all empirically verified NOT unconditionally
+    safe): `$LINENO` (the original #87046 proposal almost included
+    this, until testing found it's `unset`-sensitive — same class as
+    the next two: `bash -c 'unset LINENO; echo "[$LINENO]"; LINENO="
+    "; echo "[$LINENO]"'` prints `[]` then `[ ]`), `$!` (empty until a
+    background job exists in the current shell), `$RANDOM`/`$SECONDS`
+    (survive garbage reassignment via bash's re-seeding behavior, but
+    go genuinely empty after `unset` — stateful, scope-order-dependent;
+    this check has no `unset`-tracking machinery), `$_` (context-
+    dependent content), `$PPID` (reassignment semantics unverified).
+- **Accepted arithmetic-write shape set** (task #87110, characterized
+  rather than newly implemented — the existing `arithAssignNames`
+  wildcard-operator match and `collectScope`'s unconditional recursion
+  into `T_DollarArithmetic` already produced correct results for all of
+  these; confirmed via AST dump, not merely asserted): the bare
+  arithmetic-command form (`(( x_ = ... ))`); any arithmetic operator
+  within it, not just `=` (e.g. `(( x_ += 1 ))` — `TA_Assignment`'s
+  operator field is a plain string, wildcarded); chained assignments
+  (`(( x_ = y_ = 1 ))` — nested `TA_Assignment`, both targets fire
+  independently); and an assignment nested inside another variable's
+  `$((...))` used as a side effect (`y_=$(( x_ = 1 ))` — `collectScope`
+  doesn't treat `T_DollarArithmetic` as a scope boundary, so the nested
+  write is discovered regardless of where the expansion appears).
+  **Accepted residual gap**: `(( x_++ ))`/`(( ++x_ ))` increment/
+  decrement forms may use a distinct arithmetic AST constructor that
+  `arithAssignNames`'s `TA_Assignment`-only pattern doesn't match —
+  untested, not investigated this cycle. If so, this is a residual
+  false-negative (the write is silently invisible), the same shape as
+  the "unrecognized writers are invisible" precedent already documented
+  above — not a soundness bug.
 - **Escape/unknown-mutator disqualifier** (R2 finding): a bare
   literal-word occurrence of the candidate's name as a command
   argument — anywhere in scope, not position-bounded — disqualifies.
