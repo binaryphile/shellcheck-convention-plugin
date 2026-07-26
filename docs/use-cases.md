@@ -1,7 +1,7 @@
 # Use Cases: shellcheck-convention-plugin
 
 Cockburn-shape use cases for the IFS/noglob convention check plugin
-(SC9001-SC9011). The plugin loads dynamically into the upstream
+(SC9001-SC9012). The plugin loads dynamically into the upstream
 shellcheck fork (`binaryphile/shellcheck`); the use cases below
 describe WHAT the plugin does from three stakeholder perspectives.
 Mechanism (HOW) lives in [design.md](design.md).

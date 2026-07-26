@@ -720,6 +720,47 @@ not sufficient context.
   choice, printf leading-hyphen option-parsing, and `read`/`printf`
   command-shadowing).
 
+### SC9012 — Double-quoted literal should be single-quoted
+
+- **Module**: `src/SingleQuoteDefault.hs`
+- **Severity**: `style`
+- **Always-on**: yes — `cdName = "single-quote-default"`
+- **Numbering**: task #69103 had independently guessed "SC9011" before
+  SC9011 (sentinel-literal, task #80805) shipped first and claimed that
+  number (see SC9011's own "Numbering resolved" note above) — this
+  check is therefore SC9012, the next free slot.
+- **Source rule**: bash-style-guide "Single vs Double Quotes" —
+  "Single quotes are the default for string literals; reach for double
+  only when the value contains a single quote or you need parameter,
+  command, or arithmetic expansion."
+- **Detection**: fires on a `T_NormalWord` whose SOLE content is a
+  `T_DoubleQuoted` node (mirrors SC9003's `isSoleContent` convention —
+  a composite word mixing a quoted literal segment with an expansion,
+  e.g. `"prefix"$var`, isn't a clean single-quote-conversion candidate
+  as a whole, so it's left alone) where `ShellCheck.ASTLib.getLiteralString`
+  on that node succeeds (`Just s` — this is exactly "no expansion
+  anywhere inside," since `getLiteralString` returns `Nothing` the
+  moment any part is an expansion, so no separate expansion-child-node
+  walk is needed) AND `s` contains no single-quote character (the
+  guide's stated escape hatch — converting `"it's"` to single quotes
+  would require ugly `'it'\''s'`-style escaping, so double quotes are
+  the right choice there).
+- **Explicitly NOT matched** (by construction, not special-cased):
+  `T_DollarDoubleQuoted` (`$"..."`, localization — a different AST
+  constructor entirely); already-single-quoted or unquoted words (no
+  `T_DoubleQuoted` node present); any word containing an expansion
+  (`getLiteralString` returns `Nothing`).
+- **Accepted scope note**: an empty double-quoted string (`""`) DOES
+  fire (converts to `''`) — mechanically consistent with the rule (no
+  expansion, no embedded single quote), even though the practical value
+  of flagging it is low.
+- **Known, accepted limitation**: bash-style-guide's own "Enforcement"
+  list (in the guide itself, not this doc) currently only enumerates
+  SC9001–SC9009 and hasn't been updated for SC9010/SC9011 either — this
+  is pre-existing drift in a DIFFERENT repo (jeeves), not newly
+  introduced by this check; out of scope for this cycle to fix (would
+  need its own jeeves-repo cycle).
+
 ## 4. Reference
 
 - Host plugin system: `binaryphile/shellcheck` `docs/design.md` and

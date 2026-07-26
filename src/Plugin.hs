@@ -19,6 +19,7 @@
       SC9009 - Uninitialized-then-appended variable (nil-avoidance)
       SC9010 - IFS+noglob discipline absent (ifs-noglob-discipline)
       SC9011 - Unwarranted _ suffix on never-empty literal sentinel (sentinel-literal)
+      SC9012 - Double-quoted literal should be single-quoted (single-quote-default)
 -}
 module Plugin where
 
@@ -38,6 +39,7 @@ import qualified ListInit
 import qualified NilAvoidance
 import qualified IfsNoglobDiscipline
 import qualified SentinelLiteral
+import qualified SingleQuoteDefault
 
 foreign export ccall plugin_api_version :: IO CInt
 foreign export ccall plugin_init :: IO (StablePtr [CustomCheck])
@@ -57,5 +59,6 @@ plugin_init = newStablePtr [
     ListInit.check,            -- SC9008
     NilAvoidance.check,        -- SC9009
     IfsNoglobDiscipline.check, -- SC9010
-    SentinelLiteral.check      -- SC9011
+    SentinelLiteral.check,     -- SC9011
+    SingleQuoteDefault.check   -- SC9012
   ]

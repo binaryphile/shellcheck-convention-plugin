@@ -82,3 +82,7 @@ foo9011l() {
     echo "$x_"
 }
 foo9011l
+
+# SC9012: double-quoted string literal with no expansion and no embedded
+# single quote should be single-quoted (#69103).
+echo "hello"
