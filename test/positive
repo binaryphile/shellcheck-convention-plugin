@@ -89,3 +89,12 @@ foo9011l
 # SC9012: double-quoted string literal with no expansion and no embedded
 # single quote should be single-quoted (#69103).
 echo "hello"
+
+# SC9014: cross-scope out-param call-site argument should be UPPER_CASE
+# (bash-style-guide "Cross-scope return variables" -- #26606).
+
+foo9014() {
+  local -n REF=$1
+  REF=x
+}
+foo9014 lower

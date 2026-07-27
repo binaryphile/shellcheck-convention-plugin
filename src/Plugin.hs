@@ -21,6 +21,7 @@
       SC9011 - Unwarranted _ suffix on never-empty literal sentinel (sentinel-literal)
       SC9012 - Double-quoted literal should be single-quoted (single-quote-default)
       SC9013 - *Lists should be a true bash array, not scalar (lists-scalar-misuse)
+      SC9014 - Cross-scope out-param call-site argument should be UPPER_CASE (outparam-naming)
 -}
 module Plugin where
 
@@ -42,6 +43,7 @@ import qualified NilAvoidance
 import qualified IfsNoglobDiscipline
 import qualified SentinelLiteral
 import qualified SingleQuoteDefault
+import qualified OutParamNaming
 
 foreign export ccall plugin_api_version :: IO CInt
 foreign export ccall plugin_init :: IO (StablePtr [CustomCheck])
@@ -63,5 +65,6 @@ plugin_init = newStablePtr [
     IfsNoglobDiscipline.check, -- SC9010
     SentinelLiteral.check,     -- SC9011
     SingleQuoteDefault.check,  -- SC9012
-    ListsInit.check            -- SC9013
+    ListsInit.check,           -- SC9013
+    OutParamNaming.check       -- SC9014
   ]

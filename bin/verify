@@ -15,13 +15,13 @@ cp "$plugin_out_/lib/shellcheck/plugins/libconvention-checks.so" "$tmp_/plugins/
 sc_="$sc_out_/bin/shellcheck"
 # Codes that must fire on test/positive (has IFS+noglob discipline).
 # SC9010 fires on test/positive-no-discipline + test/adversarial, NOT here.
-posCodes=(9001 9002 9003 9004 9005 9006 9007 9008 9009 9011 9012 9013)
+posCodes=(9001 9002 9003 9004 9005 9006 9007 9008 9009 9011 9012 9013 9014)
 
 pos_=$("$sc_" --plugin-dir "$tmp_/plugins" -f gcc test/positive 2>&1 || true)
 
-# Plugin now ships 13 checks (SC9001-SC9013 per #80805, #69103, #22860).
-if ! grep -qE 'Loaded plugin: libconvention-checks\.so \(13 check\(s\)\)' <<<"$pos_"; then
-  printf 'FAIL: shellcheck did not log dlopen success (expected 13 checks)\n%s\n' "$pos_" >&2
+# Plugin now ships 14 checks (SC9001-SC9014 per #80805, #69103, #22860, #26606).
+if ! grep -qE 'Loaded plugin: libconvention-checks\.so \(14 check\(s\)\)' <<<"$pos_"; then
+  printf 'FAIL: shellcheck did not log dlopen success (expected 14 checks)\n%s\n' "$pos_" >&2
   exit 1
 fi
 
@@ -119,7 +119,7 @@ done
 # Fragment mode must NOT bleed into other checks. test/positive in
 # fragment mode still fires the non-scope-aware codes (SC9003-SC9009).
 posFrag_=$(SC_PLUGIN_FRAGMENT=1 "$sc_" --plugin-dir "$tmp_/plugins" -f gcc test/positive 2>&1 || true)
-for c in 9003 9004 9005 9006 9007 9008 9009 9011 9012 9013; do
+for c in 9003 9004 9005 9006 9007 9008 9009 9011 9012 9013 9014; do
   # shellcheck disable=SC9003  # regex literal needs quotes to preserve backslashes (see same disable above)
   if ! grep -qE "\[SC$c\]" <<<"$posFrag_"; then
     printf 'FAIL: SC%s suppressed in fragment mode on positive fixture (only SC9001/SC9002 should suppress)\n%s\n' $c "$posFrag_" >&2
@@ -127,4 +127,4 @@ for c in 9003 9004 9005 9006 9007 9008 9009 9011 9012 9013; do
   fi
 done
 
-printf 'OK: SC9001-SC9013 emitted across positive/positive-no-discipline/adversarial/adversarial-retoggle fixtures; negative silent; dlopen confirmed; fragment-mode suppresses SC9001/SC9002 only\n'
+printf 'OK: SC9001-SC9014 emitted across positive/positive-no-discipline/adversarial/adversarial-retoggle fixtures; negative silent; dlopen confirmed; fragment-mode suppresses SC9001/SC9002 only\n'

@@ -363,3 +363,11 @@ echo "$plainTainted_"
 echo hello
 echo $"hello"
 echo "prefix$plainTainted_"
+
+# SC9014-silent: caller's out-param argument is already UPPER_CASE (#26606).
+
+bar9014() {
+  local -n REF=$1
+  REF=x
+}
+bar9014 UPPER
