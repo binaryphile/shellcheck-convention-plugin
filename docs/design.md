@@ -804,6 +804,108 @@ not sufficient context.
   command flag lookup adds disproportionate code for the gain, same
   rationale as SC9008.
 
+### SC9014 — Cross-scope out-param call-site argument should be UPPER_CASE
+
+- **Module**: `src/OutParamNaming.hs`
+- **Severity**: `warn`
+- **Always-on**: yes — `cdName = "outparam-naming"`
+- **Source rule**: bash-style-guide §"Cross-scope return variables" —
+  when a function writes to a caller-supplied variable name (`local
+  -n`, `printf -v "$outVar"`, `eval "$outVar=..."`), the CALLER's
+  variable name argument should be UPPERCASE, borrowing the
+  environment-variable namespace so it can never collide with the
+  callee's own locals. SC9009/SC9011 already recognize these three
+  write-shapes but only ever validate the CALLEE's own local name or
+  literal-safety of an in-scope write — never the CALLER's argument at
+  the call site. Task #26606 (anchor: agent-orchestration cycle-1
+  collision bug, 2026-06-03).
+- **New capability**: this is the plugin's first CROSS-REFERENCING
+  check — every prior check (SC9001-SC9013) analyzes a single
+  function's or file's local scope in isolation. SC9014 indexes every
+  top-level function definition's out-param position(s) first, then
+  scans every call site of that name elsewhere in the same script,
+  checking the literal argument at the recorded position.
+- **Design history**: 4 adversarial `/grade` rounds (R1 C SEND BACK →
+  R2 C SEND BACK/GAP REMAINS → R3 C GAP REMAINS → R4 A APPROVE; task
+  #26606 plan file, events #88077/#88097/#88112/#88116). R1 found the
+  original `shift` framing backwards (claimed false-negative-safe;
+  actually a false-positive risk), missing subshell/nested-function
+  scope pruning, unhandled redefinition, an underspecified `eval`
+  heuristic, and an overly-narrow literal match excluding quoted
+  static call-site args. R2 found the R1 fix still let
+  non-persistent-context DEFINITIONS (not just writes) leak into the
+  global index, didn't exclude pipeline/background-job writes, could
+  double-warn when multiple mechanisms established the same position,
+  and didn't include no-write definitions in the redefinition-ambiguity
+  comparison. R3 found a self-contradictory ambiguity-comparison rule
+  (comparing full mechanism-tagged maps would wrongly exclude the very
+  same-position/different-mechanism case R2 said must produce exactly
+  one warning) — fixed by comparing position-key-sets only, unioning
+  mechanisms as metadata.
+- **Empirically-discovered AST gotcha (3a live-verification, not
+  caught by any `/grade` round)**: ShellCheck's parser wraps EVERY
+  statement in a `T_Pipeline` node, even a lone command with no actual
+  pipe (`Inner_T_Pipeline [] [cmd]` — empty separator list, singleton
+  command list). The R2/R3-absorbed design's "exclude any T_Pipeline
+  ancestor" boundary rule, taken literally, would have made every
+  statement in every script pipeline-excluded — a near-total
+  false-negative regression, caught only by running the actual
+  QuickCheck props against the real parser (`bash -c` parse-dump
+  cross-check) rather than trusting the design's prose alone. Fixed:
+  only a `T_Pipeline` with 2+ commands (a REAL pipe chain) counts as a
+  boundary.
+- **Detection**: two-pass whole-script analysis (`T_Script`-only
+  dispatch, unlike every prior check's per-`T_Function`-and-`T_Script`
+  independent dispatch).
+
+  - **Pass 1 (index)**: restrict to TOP-LEVEL function definitions —
+    a `T_Function` whose ancestor chain (via `parentMap`/`getPath`,
+    ShellCheck's existing ancestor-traversal machinery) crosses no
+    boundary token: another `T_Function`, `T_Subshell`,
+    `T_DollarExpansion`, `T_ProcSub`, `T_Backticked`,
+    `T_CoProc`/`T_CoProcBody`, a real (2+ command) `T_Pipeline`, or
+    `T_Backgrounded`. For each eligible definition, scan its body
+    (same boundary set, extending `NilAvoidance.collectScope`'s
+    pattern) for `printf -v "$N"`, a hardened `eval "$N=..."`
+    normalizer (resolves bare/braced/split-quote/escaped-quote forms),
+    or `local`/`declare`/`typeset -n X=$N`. A literal `shift` anywhere
+    in the body marks the definition `shift-touched` (its true
+    positions are unknowable, not absent).
+  - **Redefinition rule**: any `shift-touched` definition makes the
+    whole name `Ambiguous` (excluded from Pass 2). Otherwise, all of a
+    name's top-level definitions must share the identical
+    POSITION-KEY-SET (not the full mechanism-tagged map — different
+    mechanisms establishing the SAME position across definitions is
+    fine, not a collision; mechanisms are unioned as metadata only).
+    Disagreement (including a no-write definition alongside a writing
+    one) resolves to `Ambiguous`.
+  - **Pass 2 (scan)**: every `T_SimpleCommand` call site (recursive
+    self-calls count) whose command word resolves to `Positions
+    posMap`; for each position present as a KEY (mechanism identity is
+    irrelevant beyond having established the position — exactly one
+    warning per call-site argument, never per mechanism), the Nth
+    argument is checked if it's a bare or double-quoted literal
+    identifier (`^[A-Za-z_][A-Za-z0-9_]*$`) containing any lowercase
+    ASCII letter.
+
+- **Accepted, documented residual limitations**: single-file-AST
+  limitation (a library function and its external caller in different
+  files are mutually invisible — same class of gap SC9009/SC9011
+  already accept); `shift`-touched functions excluded entirely
+  (converts a false-positive risk into a documented false-negative);
+  function definitions or out-param-establishing writes reachable only
+  through a subshell/pipeline/backgrounded/nested-function context are
+  never indexed; ambiguous (multiple, conflicting) same-name
+  definitions excluded entirely; indirect/computed call sites
+  (`"$cmd" args`) not recognized.
+- **Live-verified** (3a, per SC9011/SC9013 precedent): run against
+  ~15 real multi-hundred-to-2000-line bash files in `cascadia/bin/`.
+  Found 2 genuine true positives (`cmd.test.resolveWorkerWrap` /
+  `cmd.test.materializeSubstrate` in `cascadia/bin/mk`, both using
+  `local -n X=$1` called with lowercase caller args), zero false
+  positives. No performance regression versus the 13-check baseline on
+  the same large files.
+
 ## 4. Reference
 
 - Host plugin system: `binaryphile/shellcheck` `docs/design.md` and
