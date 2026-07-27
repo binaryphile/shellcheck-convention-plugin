@@ -1,0 +1,77 @@
+#!/usr/bin/env bash
+# Applies SC9006 autofixes (ShellCheck's own Fix/Replacement
+# machinery) to FILE(s) in place, via `shellcheck -f diff` + `git apply`.
+# See docs/design.md "4. Autofix (-f diff)".
+IFS=$'\n'
+set -o noglob
+set -euo pipefail
+
+Prog=$(basename "$0")
+
+read -rd '' Usage_ <<END || true
+Usage:
+  $Prog FILE [FILE...]
+
+Applies auto-fixable SC9006 findings to each FILE in place.
+FILE paths must be relative to the current directory -- shellcheck's -f
+diff formatter embeds the path exactly as given, and \`git apply\`
+expects the standard a/<path> b/<path> unified-diff prefixing.
+
+Only SC9006 (comment-scope whitelist/blacklist, both-terms,
+3-case-classes-only) is fix-capable today; other findings on FILE are
+left untouched (still reported by plain \`shellcheck\`, just not by
+this wrapper).
+
+Prints "no auto-fixable findings" and exits 0 when SC9006 fired but
+none of the occurrences were autofix-eligible (this is the normal,
+expected outcome for a file whose only remaining findings are
+unsupported-case/directive-adjacent SC9006 comments).
+
+Exits non-zero, surfacing shellcheck's stderr, on a genuine tool
+failure: unreadable file (2), unparseable script (3), or unsupported
+invocation (4).
+END
+
+(( $# > 0 )) || { echo "$Usage_" >&2; exit 1; }
+case $1 in
+  -h|--help ) echo "$Usage_"; exit;;
+esac
+
+repoDir_=$(cd "$(dirname "$0")/.." && pwd)
+
+pluginOut_=$(nix build "path:$repoDir_#default"    --print-out-paths --no-link)
+scOut_=$(    nix build "path:$repoDir_#shellcheck" --print-out-paths --no-link)
+
+tmp_=$(mktemp -d)
+trap 'rm -rf "$tmp_"' EXIT
+mkdir -p "$tmp_/plugins"
+cp "$pluginOut_/lib/shellcheck/plugins/libconvention-checks.so" "$tmp_/plugins/"
+
+sc_=$scOut_/bin/shellcheck
+errFile_=$tmp_/stderr
+
+# Capture stdout (the diff, if any) and the exit code separately -- a
+# non-zero exit here means "diagnostics present" (or a real failure),
+# NOT "shellcheck itself failed to run". Per the fork's own
+# statusToCode (shellcheck.hs): 0 = NoProblems, 1 = SomeProblems
+# (any diagnostic, fixable or not), 2 = RuntimeException, 3 =
+# SyntaxFailure, 4 = SupportFailure.
+diffOut_=$("$sc_" --plugin-dir "$tmp_/plugins" -f diff --include=SC9006 "$@" 2>"$errFile_") && rc_=$? || rc_=$?
+
+case $rc_ in
+  0|1 )
+    if [[ $diffOut_ == ---* ]]; then
+      patchFile_=$tmp_/fix.patch
+      printf '%s\n' "$diffOut_" >"$patchFile_"
+      git apply --no-index -- "$patchFile_"
+      echo 'applied auto-fixable SC9006 findings'
+    else
+      echo 'no auto-fixable findings'
+    fi
+    ;;
+  * )
+    echo "fatal: shellcheck failed (rc=$rc_)" >&2
+    cat "$errFile_" >&2
+    exit "$rc_"
+    ;;
+esac

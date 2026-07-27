@@ -1,0 +1,13 @@
+#!/usr/bin/env bash
+IFS=$'\n'
+set -o noglob
+set -euo pipefail
+
+# uses allowlist and DENYLIST here
+echo eligible
+
+# WhiteList unsupported casing here
+echo ineligible-case
+
+# mentions shellcheck	disable=SC1234 alongside whitelist text
+echo ineligible-directive

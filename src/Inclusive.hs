@@ -7,8 +7,9 @@ import ShellCheck.AnalyzerLib
 import ShellCheck.Checks.Custom.Base
 import ShellCheck.Interface
 
-import Data.Char (toLower)
+import Data.Char (isLower, isUpper, toLower, toUpper)
 import Data.List (isInfixOf)
+import qualified Data.Map as Map
 import Test.QuickCheck.All (forAllProperties)
 import Test.QuickCheck.Test (quickCheckWithResult, stdArgs, maxSuccess)
 
@@ -42,15 +43,100 @@ checkName id name
   where
     lc = map toLower name
 
+-- | Comment-scope SC9006 (#75070 autofix pilot). Rewrites BOTH terms in
+-- one pass when the comment is autofix-eligible (R1 absorption item 4);
+-- otherwise falls back to the plain `warn` (no Fix attached), matching
+-- Formatter/Diff.hs's own "detected but not auto-fixable" fallback. See
+-- `rewriteTerms` for the eligibility rule.
 checkText :: Id -> String -> Analysis
-checkText id str
-    | "whitelist" `isInfixOf` lc =
-        warn id 9006 "Comment contains 'whitelist'; prefer 'allowlist'."
-    | "blacklist" `isInfixOf` lc =
-        warn id 9006 "Comment contains 'blacklist'; prefer 'denylist'."
-    | otherwise = return ()
+checkText id str = case termMsg of
+    Nothing -> return ()
+    Just msg -> do
+        params <- ask
+        case (rewriteTerms str, Map.lookup id (tokenPositions params)) of
+            (Just rewritten, Just (startPos, endPos)) ->
+                warnWithFix id 9006 msg (newFix { fixReplacements = [
+                    newReplacement {
+                        repStartPos = startPos,
+                        repEndPos = endPos,
+                        repString = rewritten
+                    }
+                ]})
+            _ -> warn id 9006 msg
   where
     lc = map toLower str
+    hasWhite = "whitelist" `isInfixOf` lc
+    hasBlack = "blacklist" `isInfixOf` lc
+    termMsg
+        | hasWhite && hasBlack =
+            Just "Comment contains 'whitelist'/'blacklist'; prefer 'allowlist'/'denylist'."
+        | hasWhite  = Just "Comment contains 'whitelist'; prefer 'allowlist'."
+        | hasBlack  = Just "Comment contains 'blacklist'; prefer 'denylist'."
+        | otherwise = Nothing
+
+-- | Case-preserving substring replacer for comment text (R1 absorption
+-- items 4/5/6, R2 item 12). Scans case-insensitively for every occurrence
+-- of "whitelist"/"blacklist" and rewrites ALL of them in one pass (item
+-- 4 -- a comment mentioning both terms must get both fixed, not just
+-- whichever guard fired first). Returns Nothing (no Fix; falls back to
+-- plain warn) when:
+--
+--   * the comment has no whitelist/blacklist occurrence at all, OR
+--   * ANY occurrence's case doesn't fall into one of the 3 supported
+--     classes -- ALLCAPS, Capitalized, lowercase (item 5 -- silently
+--     normalizing an unsupported casing like "WhiteList" or "wHiTeLiSt"
+--     would be a silent content change, not a safe rewrite), OR
+--   * the comment contains the case-insensitive substring "shellcheck"
+--     anywhere (R2 item 12, broadened from the original space-suffixed
+--     "shellcheck " guard -- catches tab-separated or punctuation-adjacent
+--     directive-looking text too; maximally conservative).
+rewriteTerms :: String -> Maybe String
+rewriteTerms str
+    | "shellcheck" `isInfixOf` map toLower str = Nothing
+    | not hasTerm = Nothing
+    | otherwise = go str
+  where
+    lc = map toLower str
+    hasTerm = "whitelist" `isInfixOf` lc || "blacklist" `isInfixOf` lc
+
+    go [] = Just ""
+    go s@(c:cs) =
+        case tryMatch "whitelist" s of
+            Just (matched, rest) -> rewriteOne matched "allowlist" rest
+            Nothing -> case tryMatch "blacklist" s of
+                Just (matched, rest) -> rewriteOne matched "denylist" rest
+                Nothing -> (c:) <$> go cs
+      where
+        rewriteOne matched repl rest = do
+            tc <- classifyCase matched
+            restRewritten <- go rest
+            return (applyCase tc repl ++ restRewritten)
+
+    -- Matches term (already lowercase) case-insensitively at the head of
+    -- s; returns the matched (as-written) substring and the remainder.
+    tryMatch term s
+        | length candidate == n && map toLower candidate == term = Just (candidate, drop n s)
+        | otherwise = Nothing
+      where
+        n = length term
+        candidate = take n s
+
+data TermCase = AllCaps | Capitalized | LowerCase
+
+-- | Classifies a matched term's as-written casing into one of the 3
+-- supported classes, or Nothing if it doesn't cleanly fit any of them.
+classifyCase :: String -> Maybe TermCase
+classifyCase s
+    | all isUpper s = Just AllCaps
+    | (x:xs) <- s, isUpper x && all isLower xs = Just Capitalized
+    | all isLower s = Just LowerCase
+    | otherwise = Nothing
+
+applyCase :: TermCase -> String -> String
+applyCase AllCaps s = map toUpper s
+applyCase Capitalized (c:cs) = toUpper c : cs
+applyCase Capitalized []     = []
+applyCase LowerCase s = map toLower s
 
 -- Tests: should fire (legacy term in assignment or function name)
 prop_sc9006_assignWhite  = verifyCode checkInclusiveLanguage 9006 "whitelist=foo"

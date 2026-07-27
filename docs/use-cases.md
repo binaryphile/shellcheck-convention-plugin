@@ -357,6 +357,90 @@ the diagnostic.
 
 ---
 
+## UC-5: Autofix a mechanical convention violation
+
+| Field | Value |
+|---|---|
+| **Scope** | An end-user's `bin/sc-fix` invocation against script(s) with autofixable SC9006 comment-scope findings. |
+| **Level** | User-goal (one `bin/sc-fix` run rewriting eligible occurrences in place). |
+| **Primary Actor** | End-user with SC9006 comment-scope violations wanting them fixed without manual editing. |
+| **Other Stakeholders** | Plugin Maintainer (cares fixes stay narrowly scoped to genuinely safe, single-site rewrites); Style Guide Author (cares the rewritten text still matches the inclusive-language convention). |
+
+### Preconditions
+
+- A built `libconvention-checks.so` and a host `shellcheck` binary
+  accessible (both via `nix build`, same as UC-2).
+- `bin/sc-fix` is runnable from the plugin repo checkout; target
+  FILE path(s) are given relative to the current directory.
+
+### Minimal Guarantee
+
+`bin/sc-fix` never applies a fix that changes anything other than the
+targeted SC9006 comment text — no unrelated line in FILE is touched.
+A run that finds SC9006 diagnostics but none autofix-eligible exits 0
+with "no auto-fixable findings" rather than failing or partially
+patching. A genuine tool failure (unreadable file, unparseable
+script) propagates as a non-zero exit with shellcheck's stderr
+surfaced, never silently treated as "nothing to fix."
+
+### Success Guarantee (Postconditions)
+
+- Every eligible SC9006 comment (whitelist/blacklist substring in one
+  of 3 supported case classes — ALLCAPS, Capitalized, lowercase — and
+  not containing the substring `shellcheck` anywhere) is rewritten to
+  its allowlist/denylist form in place; both terms in one comment are
+  rewritten in a single pass.
+- Every ineligible SC9006 comment (unsupported casing, or
+  directive-adjacent text) is left byte-for-byte untouched and still
+  fires on a subsequent plain `shellcheck` run.
+- Re-running `bin/sc-fix` against its own already-fixed output
+  produces no further changes (idempotent).
+- Every rewritten comment line still starts with `#` — the fix never
+  turns a comment into executable source.
+
+### Trigger
+
+The user has one or more scripts with SC9006 comment-scope findings
+and wants the mechanical rewrite applied without hand-editing.
+
+### Main Success Scenario
+
+1. EU builds the plugin and host shellcheck (or `bin/sc-fix` builds
+   them itself via `nix build`).
+2. EU runs `bin/sc-fix FILE [FILE...]`.
+3. `bin/sc-fix` runs `shellcheck -f diff --include=SC9006` against
+   FILE(s), capturing stdout and exit code separately.
+4. If the captured output starts with a unified-diff header (`---`),
+   `bin/sc-fix` applies it via `git apply --no-index` and reports
+   "applied auto-fixable SC9006 findings".
+5. If SC9006 fired but produced no diff (all findings ineligible),
+   `bin/sc-fix` reports "no auto-fixable findings" and exits 0.
+6. EU re-runs plain `shellcheck` to confirm the eligible finding is
+   gone and any ineligible ones remain (now warn-only, unchanged).
+
+### Extensions
+
+- **3a.** Shellcheck exits with `RuntimeException`/`SyntaxFailure`/
+  `SupportFailure` (2/3/4) → `bin/sc-fix` treats this as a genuine
+  tool failure, surfaces shellcheck's stderr, and exits non-zero
+  without touching FILE.
+- **4a.** A comment contains both `whitelist` and `blacklist` →
+  both are rewritten in the same `Fix`, not just whichever term's
+  guard fired first.
+- **4b.** Two eligible fixes' `Replacement`s would overlap after a
+  prior merge → ShellCheck's own `Fix` `Semigroup` silently drops the
+  later one (see `docs/design.md` §4); `bin/verify-fix`'s
+  second-pass idempotency check is what catches this, not `bin/sc-fix`
+  itself.
+- **5a.** A comment's whitelist/blacklist casing doesn't fall into
+  one of the 3 supported classes (e.g. `WhiteList`) → left warn-only,
+  no `Fix` attached, no silent case-normalization.
+- **5b.** A comment contains the substring `shellcheck` anywhere
+  (case-insensitive) → left warn-only, even if it also contains an
+  eligible term — conservative guard against directive-adjacent text.
+
+---
+
 ## Cross-UC invariants
 
 - **`bin/verify` is the contract gate.** Every UC's success

@@ -266,6 +266,11 @@ mapping is direct; checks without a published source are tagged
 - **Notes**: comment scope landed via tasks.shellcheck-convention-plugin
   task #7739 (commit f1f79e2), enabled by the T_Comment splice in
   upstream task #7469 (commit ddbd0c3).
+- **Fix**: comment-scope occurrences (both terms, one pass; 3
+  supported case classes; directive-adjacent comments excluded) carry
+  a ShellCheck-native `Fix` via `bin/sc-fix` (#75070 pilot) — see §4.
+  Identifier-scope occurrences remain warn-only (no fix; a correct
+  rename needs a multi-use-site walk).
 
 ### SC9007 — Docstring should begin with function name
 
@@ -906,7 +911,90 @@ not sufficient context.
   positives. No performance regression versus the 13-check baseline on
   the same large files.
 
-## 4. Reference
+## 4. Autofix (-f diff)
+
+Pilot (#75070): a plugin check can attach a ShellCheck-native `Fix` to
+its own diagnostic, making it autofixable via `shellcheck -f diff`
+with zero fork changes.
+
+- **Mechanism**: `ShellCheck.AnalyzerLib` exports `warnWithFix` /
+  `styleWithFix` / `errWithFix` / `infoWithFix` alongside the plain
+  `warn`/`style`/`err`/`info` already used by every check module (all
+  already import `AnalyzerLib` directly, e.g. `src/TaintSuffix.hs:6`
+  — no new import surface). `ShellCheck.Interface`'s `Fix`/
+  `Replacement`/`newFix`/`newReplacement` build a `Fix` from one or
+  more `Replacement`s, each an explicit `Position` span (`repStartPos`/
+  `repEndPos`, 1-based `posColumn`) plus a replacement string.
+  `tokenPositions params` (available inside any `Analysis` via `ask`)
+  maps a token `Id` to its `(startPos, endPos)`.
+- **`-f diff` is code-agnostic**: `ShellCheck.Formatter.Diff`
+  (confirmed by reading the fork's source, pinned commit `d7368980`)
+  builds its unified diff purely from `pcFix` on any
+  `PositionedComment`, with zero filtering by check origin — a
+  plugin-sourced fix is indistinguishable from a built-in ShellCheck
+  fix. When findings exist but none carry a `Fix`, it prints "Issues
+  were detected, but none were auto-fixable" instead of a patch.
+- **Fix-merge caveat**: `Fix`'s `Semigroup` instance (`ShellCheck.Fixer`)
+  silently **drops** a second fix whose replacements overlap an
+  already-merged one ("discards right on overlap") rather than
+  erroring — a caller applying multiple fixes across one file cannot
+  assume every eligible finding survived to the final patch without
+  re-checking. This is why `bin/verify-fix` re-runs `bin/sc-fix` a
+  second time on its own output and asserts an empty diff, rather than
+  trusting a single pass.
+- **`bin/sc-fix`**: wrapper script (`nix build`s the plugin + host
+  shellcheck, same temp-plugin-dir pattern as `bin/verify`) that runs
+  `shellcheck --plugin-dir <dir> -f diff --include=SC9006 FILE...` and
+  applies the resulting patch via `git apply --no-index`. FILE paths
+  must be relative to the current directory (the diff formatter embeds
+  the path exactly as given, and `git apply` expects the standard
+  `a/<path> b/<path>` unified-diff prefixing). Captures shellcheck's
+  stdout and exit code separately: exit 0/1 (clean / diagnostics
+  present, per the fork's own `statusToCode` in `shellcheck.hs`) both
+  route to a stdout-shape check (`git apply` only when the output
+  actually starts with `---`; otherwise "no auto-fixable findings",
+  exit 0); exit 2/3/4 (`RuntimeException`/`SyntaxFailure`/
+  `SupportFailure`) propagate as a hard failure with shellcheck's
+  stderr surfaced — never silently folded into the "nothing to fix"
+  path.
+- **Pilot scope — SC9006 comment-scope only, shipped**: `src/Inclusive.hs`'s
+  `checkText` attaches a single-`Replacement` `Fix` spanning the whole
+  `T_Comment` token when the comment is eligible: every
+  whitelist/blacklist occurrence's case falls into one of 3 supported
+  classes (ALLCAPS, Capitalized, lowercase — mapping any other casing
+  would be a silent content change, so it's left warn-only instead),
+  and the comment text does not contain the case-insensitive substring
+  `shellcheck` anywhere (conservative guard against directive-adjacent
+  text — a genuine `# shellcheck disable=...` directive at the start
+  of a comment is spliced out by the host parser before reaching
+  `T_Comment` at all, per `Checks/Custom/Base.hs`; this guard instead
+  covers comments that merely *contain* directive-looking text
+  alongside prose). The identifier-scope case (`checkName`, renaming a
+  `whitelist`/`blacklist`-named variable or function) stays warn-only —
+  a correct fix needs a multi-`Replacement`, scope-walking rename
+  across every use-site, not a single-site rewrite.
+- **SC9003 attempted, reverted**: the original pilot also planned an
+  SC9003 (redundant quoting) fix, narrowed to assignment-RHS +
+  single-line context to sidestep the empty-expansion/argument-
+  cardinality hazard on command-argument-position quoting. 3a
+  implementation found this eligibility bucket **unreachable**:
+  `ShellCheck.AnalyzerLib`'s `isQuoteFreeNode`/`assignmentIsQuoting`
+  unconditionally treats every `T_Assignment` ancestor as quote-free
+  for bash, so SC9003 never actually fires in assignment-RHS position
+  — its only real firing surface is command-argument position, exactly
+  the bucket already ruled unsafe. Reverted; no SC9003 fix ships.
+  Logged via `/loopback 3a->1c` (event #88459). Redesign (if any) is
+  deferred to task #88347 alongside the other unshipped candidates.
+- **Deferred** (task #88347): SC9001, SC9002, SC9005, SC9009 (each
+  needs more than a single-site zero-inference `Replacement` — see
+  their catalog entries above), SC9006's identifier-scope rename
+  (same multi-use-site problem), and SC9003 (full redesign needed).
+- **Gate**: `bin/verify-fix` (`test/fix-positive` → `bin/sc-fix` →
+  byte-exact `test/fix-expected`; `#`-prefix-preserved check;
+  second-pass idempotency; still-ineligible findings confirmed to
+  still fire).
+
+## 5. Reference
 
 - Host plugin system: `binaryphile/shellcheck` `docs/design.md` and
   `docs/plugins.md`.

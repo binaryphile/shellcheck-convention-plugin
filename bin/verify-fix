@@ -1,0 +1,71 @@
+#!/usr/bin/env bash
+# End-to-end gate for `bin/sc-fix` (SC9006-only autofix pilot, #75070).
+# See docs/design.md "4. Autofix (-f diff)".
+IFS=$'\n'
+set -o noglob
+set -euo pipefail
+cd "$(dirname "$0")/.."
+
+repo_=$(pwd)
+
+plugin_out_=$(nix build .#default     --print-out-paths --no-link)
+sc_out_=$(    nix build .#shellcheck  --print-out-paths --no-link)
+
+tmp_=$(mktemp -d)
+trap 'rm -rf "$tmp_"' EXIT
+mkdir -p "$tmp_/plugins"
+cp "$plugin_out_/lib/shellcheck/plugins/libconvention-checks.so" "$tmp_/plugins/"
+sc_="$sc_out_/bin/shellcheck"
+
+cp test/fix-positive "$tmp_/scratch.sh"
+
+# First pass: bin/sc-fix must produce a byte-exact match against
+# test/fix-expected (the eligible whitelist/blacklist comment fixed;
+# unsupported-case and directive-adjacent comments left untouched).
+( cd "$tmp_" && "$repo_/bin/sc-fix" scratch.sh )
+
+if ! diff -q "$tmp_/scratch.sh" "$repo_/test/fix-expected" >/dev/null; then
+  printf 'FAIL: bin/sc-fix output does not byte-exact match test/fix-expected\n' >&2
+  diff "$tmp_/scratch.sh" "$repo_/test/fix-expected" >&2 || true
+  exit 1
+fi
+
+# Defensive regression test (R4 absorption item 17): every rewritten
+# allowlist/denylist occurrence must sit on a line still starting with
+# '#' -- confirms the T_Comment token's stored string (and its Fix
+# Replacement span) really does include the leading '#', independent
+# of the byte-exact comparison above ever silently drifting alongside
+# a stale test/fix-expected.
+while IFS= read -r line_; do
+  case $line_ in
+    '#'* | '' ) : ;;
+    *allowlist* | *denylist* )
+      printf 'FAIL: rewritten SC9006 line lost its #-prefix: %s\n' "$line_" >&2
+      exit 1
+      ;;
+    * ) : ;;
+  esac
+done < "$tmp_/scratch.sh"
+
+# Second pass (idempotency, R1/R2 absorption): a fixed file re-run
+# through bin/sc-fix must produce an empty diff -- catches the `Fix`
+# Semigroup's silent-overlap-drop behavior (see docs/design.md).
+cp "$tmp_/scratch.sh" "$tmp_/scratch-before-second.sh"
+( cd "$tmp_" && "$repo_/bin/sc-fix" scratch.sh )
+if ! diff -q "$tmp_/scratch.sh" "$tmp_/scratch-before-second.sh" >/dev/null; then
+  printf 'FAIL: second bin/sc-fix pass produced further changes (not idempotent)\n' >&2
+  diff "$tmp_/scratch-before-second.sh" "$tmp_/scratch.sh" >&2 || true
+  exit 1
+fi
+
+# The still-ineligible findings (unsupported-case + directive-adjacent
+# comments) must still fire post-fix -- proves they were correctly
+# left as warn-only, not silently dropped.
+gccOut_=$("$sc_" --plugin-dir "$tmp_/plugins" -f gcc "$tmp_/scratch.sh" 2>&1 || true)
+ineligibleCount_=$(grep -cE '\[SC9006\]' <<<"$gccOut_" || true)
+if [[ $ineligibleCount_ -ne 2 ]]; then
+  printf 'FAIL: expected exactly 2 still-ineligible SC9006 findings post-fix, got %s\n%s\n' "$ineligibleCount_" "$gccOut_" >&2
+  exit 1
+fi
+
+printf 'OK: bin/sc-fix fixes test/fix-positive to byte-exact test/fix-expected; idempotent on second pass; #-prefix preserved; 2 ineligible SC9006 findings still fire\n'
