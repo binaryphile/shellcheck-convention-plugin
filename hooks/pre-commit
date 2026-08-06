@@ -1,0 +1,47 @@
+#!/usr/bin/env bash
+# pre-commit: for each staged bash script, run its sibling tesht suite
+# (<basename>_test.bash in the same directory) if one exists.
+# See docs/design.md "Repo hooks" and #39849.
+IFS=$'\n'
+set -o noglob
+set -euo pipefail
+
+if [[ -n ${SKIP_TESHT_CHECK:-} ]]; then
+  echo "pre-commit: SKIP_TESHT_CHECK set ($SKIP_TESHT_CHECK) -- skipping sibling-test check" >&2
+  exit 0
+fi
+
+isBashScript_() {
+  local file_=$1
+  case $file_ in
+    *.bash ) return 0 ;;
+  esac
+
+  local firstLine_
+  IFS= read -r firstLine_ <"$file_" || true
+  case $firstLine_ in
+    '#!/usr/bin/env bash' | '#!/bin/bash' ) return 0 ;;
+  esac
+  return 1
+}
+
+failed_=0
+while IFS= read -r file_; do
+  [[ -n $file_ && -f $file_ ]] || continue
+  isBashScript_ "$file_" || continue
+
+  dir_=$(dirname -- "$file_")
+  base_=$(basename -- "$file_")
+  stem_=${base_%.bash}
+  testFile_="$dir_/${stem_}_test.bash"
+
+  [[ -f $testFile_ ]] || continue
+
+  echo "pre-commit: running $testFile_" >&2
+  if ! tesht "$testFile_"; then
+    echo "pre-commit: FAIL: $testFile_" >&2
+    failed_=1
+  fi
+done < <(git diff --cached --name-only --diff-filter=ACM)
+
+exit "$failed_"

@@ -994,7 +994,56 @@ with zero fork changes.
   second-pass idempotency; still-ineligible findings confirmed to
   still fire).
 
-## 5. Reference
+## 5. Repo hooks
+
+This repo's own operator-discipline hooks (#39849, #39856) -- distinct
+from the SC9xxx checks the plugin ships, these gate commits to THIS
+repo, not to a consumer's shellcheck run. Not activated by default:
+opt in per clone via
+
+```
+git config core.hooksPath hooks
+```
+
+(the same `core.hooksPath` convention already used by era, jeeves, and
+finances for their own hooks -- applied here for the first time.)
+
+### 5.1 `hooks/pre-commit` -- run sibling tesht suites
+
+For each staged file that is a bash script (`.bash` extension, or a
+`#!/usr/bin/env bash`/`#!/bin/bash` shebang), looks for a sibling
+`<basename>_test.bash` in the same directory (the tesht convention)
+and runs it via `tesht`. The commit is rejected if any sibling test
+exits non-zero. A staged bash script with no sibling test file is not
+an error -- the check is silent for it.
+
+V1 scope: fails on any non-zero test exit. It does not distinguish a
+newly-broken test from one that was already failing before the
+staged change (no comparison against `HEAD`) -- that distinction is
+deferred.
+
+Override: `SKIP_TESHT_CHECK='reason: <text>' git commit ...` skips the
+check entirely and prints the reason to stderr.
+
+### 5.2 `hooks/commit-msg` -- reject WIP-shaped subjects on the default branch
+
+Rejects a commit subject matching (case-insensitive)
+`^(wip|fixme|tmp|squash|hack|xxx|todo)\b|do not (push|merge|commit)`
+when committing to the repo's default branch (`git config
+init.defaultBranch`, falling back to `main` if unset). Feature/
+`orch-*` branches are unrestricted.
+
+Override: `WIP_OVERRIDE='reason: <text>' git commit ...` skips the
+check entirely and prints the reason to stderr.
+
+### 5.3 Test coverage
+
+`hooks/pre-commit_test.bash` and `hooks/commit-msg_test.bash` (tesht
+suites) exercise both hooks end-to-end against scratch git repos --
+not run by `bin/verify`/`bin/verify-fix` (those gate the plugin's
+SC9xxx build/test surface); run directly via `tesht hooks/`.
+
+## 6. Reference
 
 - Host plugin system: `binaryphile/shellcheck` `docs/design.md` and
   `docs/plugins.md`.

@@ -1,0 +1,30 @@
+#!/usr/bin/env bash
+# commit-msg: reject WIP-shaped commit subjects when committing to the
+# repo's default branch (feature/orch-* branches are unrestricted).
+# See docs/design.md "Repo hooks" and #39856.
+IFS=$'\n'
+set -o noglob
+set -euo pipefail
+
+msgFile_=$1
+
+defaultBranch_=$(git config init.defaultBranch || true)
+defaultBranch_=${defaultBranch_:-main}
+
+currentBranch_=$(git symbolic-ref --short -q HEAD || true)
+
+[[ $currentBranch_ == "$defaultBranch_" ]] || exit 0
+
+if [[ -n ${WIP_OVERRIDE:-} ]]; then
+  echo "commit-msg: WIP_OVERRIDE set ($WIP_OVERRIDE) -- skipping WIP-subject check" >&2
+  exit 0
+fi
+
+subject_=$(head -n1 -- "$msgFile_")
+pattern_='^(wip|fixme|tmp|squash|hack|xxx|todo)\b|do not (push|merge|commit)'
+
+if [[ ${subject_,,} =~ $pattern_ ]]; then
+  echo "commit-msg: rejected WIP-shaped subject on $defaultBranch_: $subject_" >&2
+  echo "commit-msg: override with WIP_OVERRIDE='reason: <text>'" >&2
+  exit 1
+fi
