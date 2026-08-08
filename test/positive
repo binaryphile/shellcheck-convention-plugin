@@ -90,11 +90,14 @@ foo9011l
 # single quote should be single-quoted (#69103).
 echo "hello"
 
-# SC9014: cross-scope out-param call-site argument should be UPPER_CASE
-# (bash-style-guide "Cross-scope return variables" -- #26606).
+# SC9014: cross-scope out-param call-site argument collides with the
+# callee's own local (bash-style-guide "Cross-scope return variables" --
+# #26606, redesigned #126151 from caller-casing to actual collision
+# detection -- the original 2018 invariant is that the CALLEE namespaces
+# its own locals, not that the caller must use special casing).
 
 foo9014() {
   local -n REF=$1
   REF=x
 }
-foo9014 lower
+foo9014 REF

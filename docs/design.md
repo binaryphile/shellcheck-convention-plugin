@@ -809,21 +809,38 @@ not sufficient context.
   command flag lookup adds disproportionate code for the gain, same
   rationale as SC9008.
 
-### SC9014 — Cross-scope out-param call-site argument should be UPPER_CASE
+### SC9014 — Cross-scope out-param call-site argument collision detection
 
 - **Module**: `src/OutParamNaming.hs`
 - **Severity**: `warn`
 - **Always-on**: yes — `cdName = "outparam-naming"`
 - **Source rule**: bash-style-guide §"Cross-scope return variables" —
   when a function writes to a caller-supplied variable name (`local
-  -n`, `printf -v "$outVar"`, `eval "$outVar=..."`), the CALLER's
-  variable name argument should be UPPERCASE, borrowing the
-  environment-variable namespace so it can never collide with the
-  callee's own locals. SC9009/SC9011 already recognize these three
-  write-shapes but only ever validate the CALLEE's own local name or
-  literal-safety of an in-scope write — never the CALLER's argument at
-  the call site. Task #26606 (anchor: agent-orchestration cycle-1
-  collision bug, 2026-06-03).
+  -n`, `printf -v "$outVar"`, `eval "$outVar=..."`), the risk is that
+  the CALLEE's own local variables can silently mask the caller's
+  return-variable name (a callee `local REF` shadows a caller-passed
+  `REF`, redirecting the write to the callee's own copy instead of the
+  caller's). SC9009/SC9011 already recognize these three write-shapes
+  but only ever validate the CALLEE's own local name or literal-safety
+  of an in-scope write — never the CALLER's argument at the call site.
+  Task #26606 (anchor: agent-orchestration cycle-1 collision bug,
+  2026-06-03).
+- **Provenance correction (#126151, 2026-08-08)**: originally shipped
+  requiring the CALLER's argument to be UPPER_CASE (a blanket casing
+  rule). Confirmed drift from an earlier AI-assisted rewrite of the
+  guide (first commit 2026-02-27, "rewrite from code analysis") — the
+  original design (`binaryphile.github.io/_posts/2018-09-22-approach-
+  bash-like-a-developer-part-26-returning-values.md`, unambiguously
+  pre-dating any AI involvement) places the collision-avoidance burden
+  on the CALLEE: "Since the function doesn't know what name the caller
+  will pass, it has to namespace all of its locals." A chronological
+  survey of the operator's own `~/dotfiles` bash (2020–2026) confirmed
+  the caller consistently used its own ordinary (often lowercase)
+  variable name across independent helper-function lineages. Redesigned
+  to detect the real invariant: does the caller's literal argument
+  collide with a name the target function actually declares as its own
+  local (regardless of case)? Companion fix: bash-style-guide.md's own
+  text (jeeves task #126159, separate repo) needs the same correction.
 - **New capability**: this is the plugin's first CROSS-REFERENCING
   check — every prior check (SC9001-SC9013) analyzes a single
   function's or file's local scope in isolation. SC9014 indexes every
@@ -884,32 +901,69 @@ not sufficient context.
     fine, not a collision; mechanisms are unioned as metadata only).
     Disagreement (including a no-write definition alongside a writing
     one) resolves to `Ambiguous`.
+  - **Locals-set collection (#126151)**: independent of Pass
+    1's position resolution — `localNamesOf` walks the same
+    scope-respecting token list per top-level definition, collecting
+    every name a `local`/`declare`/`typeset` command introduces
+    (single- and multi-name forms, bare uninitialized declarations,
+    array/subscript assignments — `T_Assignment`'s own `name` field
+    already excludes any subscript, so no extra normalization is
+    needed). Excludes `-g`/`-global` (not function-scoped despite the
+    keyword) and `-p`/`-f` (inspection, not declaration). Unioned
+    across same-name top-level definitions UNCONDITIONALLY — this does
+    NOT depend on whether Pass 1 resolved that name's out-param
+    POSITIONS to `Ambiguous` (`shift`-touched renumbers which position
+    writes where; it doesn't change what names a function declares).
   - **Pass 2 (scan)**: every `T_SimpleCommand` call site (recursive
     self-calls count) whose command word resolves to `Positions
     posMap`; for each position present as a KEY (mechanism identity is
     irrelevant beyond having established the position — exactly one
     warning per call-site argument, never per mechanism), the Nth
-    argument is checked if it's a bare or double-quoted literal
-    identifier (`^[A-Za-z_][A-Za-z0-9_]*$`) containing any lowercase
-    ASCII letter.
+    argument fires only when it's a bare or double-quoted literal
+    identifier (`^[A-Za-z_][A-Za-z0-9_]*$`) that is a MEMBER of the
+    target function's own locals set (built above) — a static/possible
+    namespace collision, not a proof of an actual runtime write
+    (a local could be conditionally declared, or declared after the
+    out-param write; the diagnostic wording reflects "may collide,"
+    not "does collide").
 
 - **Accepted, documented residual limitations**: single-file-AST
   limitation (a library function and its external caller in different
   files are mutually invisible — same class of gap SC9009/SC9011
-  already accept); `shift`-touched functions excluded entirely
-  (converts a false-positive risk into a documented false-negative);
-  function definitions or out-param-establishing writes reachable only
-  through a subshell/pipeline/backgrounded/nested-function context are
-  never indexed; ambiguous (multiple, conflicting) same-name
-  definitions excluded entirely; indirect/computed call sites
-  (`"$cmd" args`) not recognized.
-- **Live-verified** (3a, per SC9011/SC9013 precedent): run against
-  ~15 real multi-hundred-to-2000-line bash files in `cascadia/bin/`.
-  Found 2 genuine true positives (`cmd.test.resolveWorkerWrap` /
-  `cmd.test.materializeSubstrate` in `cascadia/bin/mk`, both using
-  `local -n X=$1` called with lowercase caller args), zero false
-  positives. No performance regression versus the 13-check baseline on
-  the same large files.
+  already accept); `shift`-touched functions excluded entirely from
+  Pass 2 (converts a false-positive risk into a documented
+  false-negative on POSITIONS — the locals set itself is still
+  collected, just never consulted for that name); function definitions
+  or out-param-establishing writes reachable only through a
+  subshell/pipeline/backgrounded/nested-function context are never
+  indexed (neither for positions nor for locals); ambiguous (multiple,
+  conflicting) same-name POSITION definitions excluded entirely;
+  indirect/computed call sites (`"$cmd" args`) not recognized; indirect
+  nameref binding via a named intermediate local (`local x=$2; local -n
+  Y=$x`, rather than `local -n Y=$2` directly) is not traced at all —
+  such a function is invisible to Pass 1 entirely (tracked separately,
+  #126163).
+- **Live-verified** (3a, per SC9011/SC9013 precedent; re-verified
+  #126151 2026-08-08): the original 2 "true positives"
+  (`cmd.test.resolveWorkerWrap` / `cmd.test.materializeSubstrate` in
+  `cascadia/bin/mk`) were re-run under the corrected logic and both are
+  now correctly SILENT — neither was ever a real collision.
+  `resolveWorkerWrap`'s caller-passed name (`workerWrap_`) never
+  collided with any of the callee's own locals; `materializeSubstrate`
+  had already been hand-authored to AVOID the collision (a comment at
+  the call site reads "subPath (not substrateTarget): avoid nameref
+  collision with the caller's `substrateTarget` variable shadowed by a
+  same-named local" — the original author was already practicing the
+  correct, callee-namespaces-itself discipline years before this check
+  or the guide text existed; the old casing-based rule was flagging
+  already-correct code). A broader grep across cascadia's `.bash` files
+  for actual out-param shapes (`local -n `/`printf -v "$`) found 4
+  candidate files; one (`experiments/residentworker87287/
+  supervisor_test.bash`) had 6 findings under the old logic, all
+  eliminated under the new logic (non-colliding lowercase names, the
+  exact false-positive class this fix targets) and 0 under the new
+  logic on all 4 files. No performance regression versus the 13-check
+  baseline.
 
 ## 4. Autofix (-f diff)
 

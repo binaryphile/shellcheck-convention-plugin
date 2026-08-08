@@ -364,10 +364,13 @@ echo hello
 echo $"hello"
 echo "prefix$plainTainted_"
 
-# SC9014-silent: caller's out-param argument is already UPPER_CASE (#26606).
+# SC9014-silent: caller's out-param argument does not collide with the
+# callee's own locals (#26606, redesigned #126151 -- casing alone proves
+# nothing either way; only an actual name collision fires).
 
 bar9014() {
   local -n REF=$1
   REF=x
 }
 bar9014 UPPER
+bar9014 lower

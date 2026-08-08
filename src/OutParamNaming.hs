@@ -24,9 +24,9 @@ check = CustomCheck {
     ccAlwaysOn = True,
     ccDescription = newCheckDescription {
         cdName = "outparam-naming",
-        cdDescription = "Cross-scope out-param call-site argument should be UPPER_CASE",
-        cdPositive = "foo() { local -n REF=$1; REF=x; }\nfoo lower",
-        cdNegative = "foo() { local -n REF=$1; REF=x; }\nfoo UPPER"
+        cdDescription = "Cross-scope out-param call-site argument collides with the callee's own local",
+        cdPositive = "foo() { local -n REF=$1; REF=x; }\nfoo REF",
+        cdNegative = "foo() { local -n REF=$1; REF=x; }\nfoo repo"
     }
 }
 
@@ -243,8 +243,37 @@ isBashIdentifier (c:cs) = (isAsciiUpper c || isAsciiLower c || c == '_')
                        && all (\x -> isAsciiUpper x || isAsciiLower x || isDigit x || x == '_') cs
 isBashIdentifier []     = False
 
-hasLowerAsciiLetter :: String -> Bool
-hasLowerAsciiLetter = any isAsciiLower
+-- | Every name a `local`/`declare`/`typeset` command in this function body
+-- introduces into the FUNCTION'S OWN scope -- the collision set a caller's
+-- out-param argument must not match (#126151: the real 2018 invariant --
+-- see bash-style-guide "Cross-scope return variables" -- is that the
+-- CALLEE namespaces its own locals so no caller-chosen name can collide,
+-- not that the caller must adopt special casing).
+--
+-- Excludes `-g`/`-global` declarations (not function-scoped despite the
+-- keyword) and `-p`/`-f` (inspection forms -- `declare -p x` reads an
+-- existing binding, it does not introduce one). Handles multi-name forms
+-- (`local -n a=$2 b=$3`), bare uninitialized names (`local x`), and
+-- array/subscript assignments (`arr[0]=x`) -- ShellCheck's own
+-- T_Assignment already carries the base name separately from any
+-- subscript, so no extra normalization is needed for the array case.
+localNamesOf :: [Token] -> Set.Set String
+localNamesOf scopeToks = Set.unions (map oneCmd scopeToks)
+  where
+    oneCmd :: Token -> Set.Set String
+    oneCmd (T_SimpleCommand _ _ (T_NormalWord _ (T_Literal _ cmd : _) : args))
+        | cmd `elem` ["local", "declare", "typeset"]
+        , not (hasFlagChar 'g' args)
+        , not (hasFlagChar 'p' args)
+        , not (hasFlagChar 'f' args)
+        = Set.fromList (concatMap namesOfArg args)
+    oneCmd _ = Set.empty
+
+    namesOfArg :: Token -> [String]
+    namesOfArg (T_Assignment _ Assign name _ _) = [name]
+    namesOfArg (T_NormalWord _ [T_Literal _ n])
+        | isBashIdentifier n = [n]
+    namesOfArg _ = []
 
 wholeScriptAnalysis :: Token -> Analysis
 wholeScriptAnalysis script = do
@@ -252,21 +281,33 @@ wholeScriptAnalysis script = do
     let tree     = parentMap params
         allFns   = collectAllFunctions script
         eligible = filter (isTopLevelEligible tree) allFns
+        namedEligible = [ f | f <- eligible, not (null (functionName f)) ]
         shapesByName = Map.fromListWith (++)
             [ (functionName f, [defShapeOf (collectScope (functionBody f))])
-            | f <- eligible, not (null (functionName f))
+            | f <- namedEligible
             ]
         resolved = Map.map resolveName shapesByName
+        -- Locals-set collection is independent of out-param-position
+        -- resolution (#126151 R1 finding 2): a shift-touched/ambiguous
+        -- name's POSITIONS are unknowable, but its declared LOCALS are
+        -- not affected by that -- shift renumbers which position writes
+        -- where, it doesn't change what names a function declares. Union
+        -- unconditionally across every same-named top-level definition.
+        localsByName = Map.fromListWith Set.union
+            [ (functionName f, localNamesOf (collectScope (functionBody f)))
+            | f <- namedEligible
+            ]
         cmds = collectAllCommands script
     forM_ cmds $ \cmd -> case cmd of
         T_SimpleCommand _ _ (T_NormalWord _ [T_Literal _ cmdName] : args) ->
             case Map.lookup cmdName resolved of
                 Just (Positions posMap) ->
-                    forM_ (Map.keys posMap) $ \n ->
+                    let locals = Map.findWithDefault Set.empty cmdName localsByName
+                    in forM_ (Map.keys posMap) $ \n ->
                         case drop (n - 1) args of
                             (argTok : _) -> case literalIdentifierArg argTok of
                                 Just (tid, name)
-                                    | isBashIdentifier name, hasLowerAsciiLetter name ->
+                                    | isBashIdentifier name, name `Set.member` locals ->
                                         warn tid 9014 (formatMessage cmdName name)
                                 _ -> return ()
                             [] -> return ()
@@ -276,38 +317,70 @@ wholeScriptAnalysis script = do
 formatMessage :: String -> String -> String
 formatMessage cmdName name =
     "Cross-scope out-param argument '" ++ name ++ "' passed to '" ++ cmdName ++
-    "' should be UPPER_CASE (bash-style-guide: cross-scope return variables)."
+    "' may collide with '" ++ cmdName ++ "'s own local '" ++ name ++
+    "' -- a static namespace collision that can silently redirect the write " ++
+    "to the callee's local instead of your variable (bash-style-guide: " ++
+    "cross-scope return variables)."
 
--- A. Positive -- printf -v out-param call-site arg is lowercase.
-prop_sc9014_printfVLowercase = verifyCode checkOutParamNaming 9014
-    "foo() { printf -v \"$1\" '%s' x; }\nfoo lower"
+-- A. Positive -- printf -v out-param call-site arg collides with a
+-- sibling local the callee itself declares.
+prop_sc9014_printfVColliding = verifyCode checkOutParamNaming 9014
+    "foo() { local tmp; printf -v \"$1\" '%s' x; }\nfoo tmp"
 
--- B. Positive -- eval out-param call-site arg is lowercase.
-prop_sc9014_evalLowercase = verifyCode checkOutParamNaming 9014
-    "foo() { eval \"$1=x\"; }\nfoo lower"
+-- A2. Negative (#126151 R1 finding 4/5 -- the false-positive fix, printf-v
+-- mechanism): a lowercase, non-colliding argument with no other callee
+-- locals is silent -- this exact shape is `safe()`'s real call site.
+prop_sc9014_printfVNonCollidingSilent = verifyNot checkOutParamNaming
+    "foo() { printf -v \"$1\" '%s' x; }\nfoo repo"
 
--- B2. Positive -- eval with braced positional reference.
+-- B. Positive -- eval out-param call-site arg collides with a sibling local.
+prop_sc9014_evalColliding = verifyCode checkOutParamNaming 9014
+    "foo() { local tmp; eval \"$1=x\"; }\nfoo tmp"
+
+-- B2. Positive -- eval with braced positional reference, colliding.
 prop_sc9014_evalBraced = verifyCode checkOutParamNaming 9014
-    "foo() { eval \"${1}=x\"; }\nfoo lower"
+    "foo() { local tmp; eval \"${1}=x\"; }\nfoo tmp"
 
--- B3. Positive -- eval with split-quote form.
+-- B3. Positive -- eval with split-quote form, colliding.
 prop_sc9014_evalSplitQuote = verifyCode checkOutParamNaming 9014
-    "foo() { eval \"$1\"'=x'; }\nfoo lower"
+    "foo() { local tmp; eval \"$1\"'=x'; }\nfoo tmp"
 
--- B4. Positive -- eval with escaped-double-quote form.
+-- B4. Positive -- eval with escaped-double-quote form, colliding.
 prop_sc9014_evalEscapedQuote = verifyCode checkOutParamNaming 9014
-    "foo() { eval \"$1=\\\"x\\\"\"; }\nfoo lower"
+    "foo() { local tmp; eval \"$1=\\\"x\\\"\"; }\nfoo tmp"
 
--- C. Positive -- local -n out-param call-site arg is lowercase.
-prop_sc9014_namerefLowercase = verifyCode checkOutParamNaming 9014
-    "foo() { local -n REF=$1; REF=x; }\nfoo lower"
+-- B5. Negative -- eval mechanism, non-colliding lowercase arg is silent.
+prop_sc9014_evalNonCollidingSilent = verifyNot checkOutParamNaming
+    "foo() { eval \"$1=x\"; }\nfoo repo"
 
--- D. Positive -- double-quoted static call-site arg is lowercase.
-prop_sc9014_quotedStaticArg = verifyCode checkOutParamNaming 9014
-    "foo() { local -n REF=$1; REF=x; }\nfoo \"lower\""
+-- C. Positive -- self-reference collision: caller's argument matches the
+-- callee's own nameref alias name.
+prop_sc9014_namerefSelfCollision = verifyCode checkOutParamNaming 9014
+    "foo() { local -n REF=$1; REF=x; }\nfoo REF"
 
--- E. Negative -- UPPER_CASE call-site arg is silent.
-prop_sc9014_upperSilent = verifyNot checkOutParamNaming
+-- C2. Positive -- collision with an ordinary (non-nameref) sibling local.
+prop_sc9014_collidingOtherLocal = verifyCode checkOutParamNaming 9014
+    "foo() { local -n REF=$1; local tmp; REF=x; }\nfoo tmp"
+
+-- C3. Positive (#126151 R1 finding -- the false-negative fix): an
+-- UPPERCASE argument that collides still fires -- casing was never the
+-- real invariant.
+prop_sc9014_upperButColliding = verifyCode checkOutParamNaming 9014
+    "foo() { local -n OUT=$1; OUT=x; }\nfoo OUT"
+
+-- D. Positive -- double-quoted static call-site arg, colliding.
+prop_sc9014_quotedCollidingArg = verifyCode checkOutParamNaming 9014
+    "foo() { local -n REF=$1; REF=x; }\nfoo \"REF\""
+
+-- E. Negative (#126151 R1 -- the key false-positive fix, this is
+-- `safe()`'s exact real usage): a non-colliding lowercase call-site arg
+-- is silent, regardless of case.
+prop_sc9014_lowercaseNonCollidingSilent = verifyNot checkOutParamNaming
+    "foo() { local -n REF=$1; REF=x; }\nfoo repo"
+
+-- E2. Negative -- non-colliding UPPERCASE call-site arg is also silent
+-- (no collision either way; casing alone proves nothing).
+prop_sc9014_upperNonCollidingSilent = verifyNot checkOutParamNaming
     "foo() { local -n REF=$1; REF=x; }\nfoo UPPER"
 
 -- F. Negative -- non-literal call-site arg is silent.
@@ -318,38 +391,72 @@ prop_sc9014_nonLiteralSilent = verifyNot checkOutParamNaming
 prop_sc9014_noWriteSilent = verifyNot checkOutParamNaming
     "foo() { echo \"$1\"; }\nfoo lower"
 
--- H. Positive -- forward-reference call site (call precedes definition).
+-- G2. Negative -- `declare -g` is NOT function-scoped; a same-named
+-- caller argument must not be treated as a collision.
+prop_sc9014_globalDeclareExcluded = verifyNot checkOutParamNaming
+    "foo() { local -n REF=$1; declare -g tmp=1; REF=x; }\nfoo tmp"
+
+-- G3. Negative -- `declare -p` is inspection-only, not a declaration.
+prop_sc9014_declarePExcluded = verifyNot checkOutParamNaming
+    "foo() { local -n REF=$1; declare -p tmp; REF=x; }\nfoo tmp"
+
+-- G4. Positive -- multi-name `local -n a=$2 b=$3` form: BOTH names enter
+-- the collision set, not just the one `findNamerefPositional` tracks as
+-- an out-param position (it only captures the first assignment's
+-- position, an existing, unrelated limitation -- pre-dates #126151).
+-- Position 2 (a's position, the one actually registered) is called with
+-- "b" -- proving `local -n a=$2 b=$3` declared "b" too, even though only
+-- "a"'s position is tracked.
+prop_sc9014_multiNameLocalN = verifyCode checkOutParamNaming 9014
+    "foo() { local -n a=$2 b=$3; a=x; }\nfoo unused b"
+
+-- G5. Positive -- bare uninitialized `local x` still collides.
+prop_sc9014_bareLocalCollides = verifyCode checkOutParamNaming 9014
+    "foo() { local -n REF=$1; local tmp; REF=x; }\nfoo tmp"
+
+-- G6. Negative -- cross-function isolation: function A's own local name
+-- must never leak into function B's collision set.
+prop_sc9014_crossFunctionIsolationSilent = verifyNot checkOutParamNaming
+    "foo() { local -n REF=$1; local aOnly; REF=x; }\nbar() { local -n REF=$1; REF=x; }\nbar aOnly"
+
+-- H. Positive -- forward-reference call site (call precedes definition),
+-- colliding argument.
 prop_sc9014_forwardReference = verifyCode checkOutParamNaming 9014
-    "foo lower\nfoo() { local -n REF=$1; REF=x; }"
+    "foo REF\nfoo() { local -n REF=$1; REF=x; }"
 
--- I. Positive -- recursive self-call with lowercase arg.
+-- I. Positive -- recursive self-call with a colliding (self-reference) arg.
 prop_sc9014_recursiveSelfCall = verifyCode checkOutParamNaming 9014
-    "foo() { local -n REF=$1; foo lower; }"
+    "foo() { local -n REF=$1; foo REF; }"
 
--- J. Negative -- function containing shift anywhere is silent regardless of naming.
+-- J. Negative -- function containing shift anywhere is silent regardless
+-- of naming, even with an argument that WOULD collide (proves the
+-- shift-touched exclusion, not a coincidentally-non-colliding name).
 prop_sc9014_shiftTouchedSilent = verifyNot checkOutParamNaming
-    "foo() { shift; local -n REF=$1; REF=x; }\nfoo lower"
+    "foo() { shift; local -n REF=$1; REF=x; }\nfoo REF"
 
--- K. Negative -- shift nested inside an if branch is still caught.
+-- K. Negative -- shift nested inside an if branch is still caught, with
+-- a colliding argument.
 prop_sc9014_shiftNestedInIfSilent = verifyNot checkOutParamNaming
-    "foo() { if true; then shift; fi; local -n REF=$1; REF=x; }\nfoo lower"
+    "foo() { if true; then shift; fi; local -n REF=$1; REF=x; }\nfoo REF"
 
--- L. Negative -- ambiguous redefinition (differing positions) is silent.
+-- L. Negative -- ambiguous redefinition (differing positions) is silent,
+-- with colliding arguments at both positions.
 prop_sc9014_ambiguousRedefinitionSilent = verifyNot checkOutParamNaming
-    "foo() { local -n REF=$1; REF=x; }\nfoo() { local -n REF=$2; REF=x; }\nfoo lower lower"
+    "foo() { local -n REF=$1; REF=x; }\nfoo() { local -n REF=$2; REF=x; }\nfoo REF REF"
 
 -- M. Negative -- write inside a subshell does not register the function.
 prop_sc9014_subshellWriteSilent = verifyNot checkOutParamNaming
-    "foo() { ( local -n REF=$1; REF=x; ); }\nfoo lower"
+    "foo() { ( local -n REF=$1; REF=x; ); }\nfoo REF"
 
 -- N. Negative -- non-identifier literal reaching the case-check is silent.
 prop_sc9014_nonIdentifierSilent = verifyNot checkOutParamNaming
     "foo() { local -n REF=$1; REF=x; }\nfoo -x"
 
 -- O. Negative -- no-write definition alongside a write definition of the
--- same name is silent (the R2 "no-write definition" comparison bug).
+-- same name is silent (the R2 "no-write definition" comparison bug),
+-- with a colliding argument.
 prop_sc9014_noWriteVsWriteSilent = verifyNot checkOutParamNaming
-    "foo() { echo hi; }\nfoo() { local -n REF=$1; REF=x; }\nfoo lower"
+    "foo() { echo hi; }\nfoo() { local -n REF=$1; REF=x; }\nfoo REF"
 
 -- P. Negative -- a write inside a nested function definition does not
 -- register the OUTER function as having an out-param.
@@ -369,14 +476,15 @@ prop_sc9014_backgroundedWriteSilent = verifyNot checkOutParamNaming
 -- S. Negative -- a function definition reachable only through a subshell
 -- is never index-eligible (definition-side, not just write-side).
 prop_sc9014_definitionInSubshellSilent = verifyNot checkOutParamNaming
-    "( foo() { local -n REF=$1; REF=x; }; foo lower; )"
+    "( foo() { local -n REF=$1; REF=x; }; foo REF; )"
 
 -- T. Positive, single warning -- the same position established via two
 -- different mechanisms across two top-level definitions still resolves,
 -- and fires exactly once (verifyCode itself asserts codes == [9014] --
--- i.e. exactly one occurrence, not two).
+-- i.e. exactly one occurrence, not two). Colliding argument (the
+-- nameref definition's own local name).
 prop_sc9014_multiMechanismSinglePosition = verifyCode checkOutParamNaming 9014
-    "if true; then foo() { local -n REF=$1; REF=x; }; else foo() { printf -v \"$1\" x; }; fi\nfoo lower"
+    "if true; then foo() { local -n REF=$1; REF=x; }; else foo() { printf -v \"$1\" x; }; fi\nfoo REF"
 
 return []
 runTests = $(forAllProperties) (quickCheckWithResult (stdArgs { maxSuccess = 1 }))
