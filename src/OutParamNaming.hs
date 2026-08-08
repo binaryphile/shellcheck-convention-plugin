@@ -7,10 +7,11 @@ import ShellCheck.AnalyzerLib
 import ShellCheck.Checks.Custom.Base
 import ShellCheck.Interface
 
+import Control.Applicative ((<|>))
 import Control.Monad (forM_)
 import Data.Char (isAsciiLower, isAsciiUpper, isDigit)
 import Data.Foldable (toList)
-import Data.List (isPrefixOf)
+import Data.List (foldl', isPrefixOf)
 import qualified Data.List.NonEmpty as NE
 import qualified Data.Map as Map
 import qualified Data.Set as Set
@@ -124,6 +125,34 @@ positionalRefOf (T_DollarBraced _ _ inner) =
 positionalRefOf (T_DoubleQuoted _ [inner]) = positionalRefOf inner
 positionalRefOf _ = Nothing
 
+-- | Named (non-positional) variable-reference extraction: bare `$x`/
+-- `${x}`, or a single level of double-quote wrapping one (`"$x"`).
+-- #126163: sibling to `positionalRefOf`, but deliberately does NOT use
+-- `getBracedReference` -- empirically confirmed (AST probe, task #126163
+-- R1) that `getBracedReference` STRIPS modifiers (`${x:-fallback}` and
+-- even the indirect-expansion form `${!x}` both come back as bare "x"),
+-- which would make `local -n Y=${x:-fallback}` (or worse, `${!x}`, a
+-- semantically different indirect-expansion form) silently misresolve
+-- as a faithful `$x` reference. This same latent bug exists in the
+-- EXISTING `positionalRefOf` for the direct-positional case
+-- (`${1:-fallback}` misresolves as `$1`) -- pre-existing, out of this
+-- cycle's scope, tracked separately (#126222). Uses the RAW pre-strip
+-- text (`concat (oversimplify inner)`, same extraction `positionalRefOf`
+-- performs before handing it to `getBracedReference`) validated via
+-- `isBashIdentifier`, which correctly rejects both modifier forms since
+-- their raw text ("x:-fallback", "!x") is not a plain identifier.
+namedVarRefOf :: Token -> Maybe String
+namedVarRefOf (T_DollarBraced _ _ inner) =
+    case concat (oversimplify inner) of
+        s | isBashIdentifier s -> Just s
+        _                      -> Nothing
+namedVarRefOf (T_DoubleQuoted _ [inner]) = namedVarRefOf inner
+namedVarRefOf _ = Nothing
+
+namedVarRefOfWord :: Token -> Maybe String
+namedVarRefOfWord (T_NormalWord _ [w]) = namedVarRefOf w
+namedVarRefOfWord _                    = Nothing
+
 -- | Literal text of a token restricted to pure literal shapes (no
 -- expansions) -- used for the `=...` remainder after eval's positional
 -- reference, across bare/single/double-quoted word-parts.
@@ -165,14 +194,29 @@ evalParts (first : rest) = do
     if "=" `isPrefixOf` remainder then Just n else Nothing
 evalParts [] = Nothing
 
--- | `local`/`declare`/`typeset -n NAME=$N` -- NAME=$N parses as a
--- T_Assignment directly in the arg list (Convention.hs/SentinelLiteral.hs
--- precedent); the RHS positional ref is what we want, NAME's own
+-- | A named intermediate local's resolved donor position, tracked
+-- SEQUENTIALLY in scope-token order (#126163 R1 findings 1+2 -- unlike
+-- direct-positional resolution, indirect resolution needs cross-
+-- statement state, and getting the order wrong is a real soundness bug:
+-- a later `local x=$2` cannot retroactively establish an EARLIER
+-- `local -n Y=$x`). `Just n` = as of this point in the scope, the name
+-- unambiguously holds position n's caller-supplied value. `Nothing` =
+-- the name was declared/reassigned to something that isn't a direct
+-- positional reference (including a CONFLICTING positional -- e.g.
+-- `local x=$2` followed later by `local x=$3`), permanently
+-- disqualifying it as a donor from that point on -- never silently
+-- picks one of two conflicting positions.
+type Donors = Map.Map String (Maybe Int)
+
+-- | `local`/`declare`/`typeset -n NAME=$N` (direct) or
+-- `local`/`declare`/`typeset -n NAME=$x` where `x` resolves via the
+-- CURRENT `donors` state (indirect, #126163) -- NAME's own
 -- (callee-chosen) case is a different, already-handled concern.
-findNamerefPositional :: [Token] -> Maybe Int
-findNamerefPositional (T_Assignment _ Assign _ _ value : _) = positionalRefOfWord value
-findNamerefPositional (_ : rest)                             = findNamerefPositional rest
-findNamerefPositional []                                     = Nothing
+findNamerefPositional :: Donors -> [Token] -> Maybe Int
+findNamerefPositional donors (T_Assignment _ Assign _ _ value : _) =
+    positionalRefOfWord value <|> (namedVarRefOfWord value >>= \n -> Map.lookup n donors >>= id)
+findNamerefPositional donors (_ : rest) = findNamerefPositional donors rest
+findNamerefPositional _ [] = Nothing
 
 hasFlagChar :: Char -> [Token] -> Bool
 hasFlagChar c = any go
@@ -186,28 +230,60 @@ hasLiteralShift scopeToks = any isShift scopeToks
     isShift (T_SimpleCommand _ _ (T_NormalWord _ [T_Literal _ "shift"] : _)) = True
     isShift _ = False
 
+-- | Update the donor map from one `local`/`declare`/`typeset` command's
+-- assignments (#126163). Excludes `-g` (not function-scoped, matching
+-- #126151's global-exclusion precedent). Every assignment updates (or
+-- disqualifies) its own name; a positional RHS records the position,
+-- anything else (including a conflicting positional) disqualifies the
+-- name as a future donor.
+updateDonors :: Token -> Donors -> Donors
+updateDonors (T_SimpleCommand _ _ (T_NormalWord _ (T_Literal _ cmd : _) : args)) donors
+    | cmd `elem` ["local", "declare", "typeset"]
+    , not (hasFlagChar 'g' args)
+    = foldl' oneAssign donors args
+  where
+    oneAssign :: Donors -> Token -> Donors
+    oneAssign d (T_Assignment _ Assign name _ value) = case positionalRefOfWord value of
+        Just n -> case Map.lookup name d of
+            Just (Just m) | m /= n -> Map.insert name Nothing d
+            _                      -> Map.insert name (Just n) d
+        Nothing -> Map.insert name Nothing d
+    oneAssign d _ = d
+updateDonors _ donors = donors
+
 -- | Infer a single top-level function definition's shape from its
--- scope-respecting body tokens.
+-- scope-respecting body tokens. Sequential left-to-right fold
+-- (#126163) so indirect nameref-binding resolution sees only
+-- ALREADY-ESTABLISHED donors, never later ones.
 defShapeOf :: [Token] -> DefShape
 defShapeOf scopeToks
     | hasLiteralShift scopeToks = ShiftTouched
     | Map.null merged           = NoWrite
     | otherwise                 = HasWrite merged
   where
-    merged = Map.unionsWith Set.union (concatMap oneCmd scopeToks)
-    oneCmd :: Token -> [Map.Map Int (Set.Set Mechanism)]
-    oneCmd (T_SimpleCommand _ _ (T_NormalWord _ (T_Literal _ cmd : _) : args))
-        | cmd == "printf"
-        , Just n <- findPrintfVPositional args
-        = [Map.singleton n (Set.singleton PrintfV)]
-        | cmd == "eval"
-        , Just n <- evalOutParamPosition args
-        = [Map.singleton n (Set.singleton Eval)]
-        | cmd `elem` ["local", "declare", "typeset"]
-        , hasFlagChar 'n' args
-        , Just n <- findNamerefPositional args
-        = [Map.singleton n (Set.singleton Nameref)]
-    oneCmd _ = []
+    (_, merged) = foldl' step (Map.empty, Map.empty) scopeToks
+
+    step :: (Donors, Map.Map Int (Set.Set Mechanism))
+         -> Token
+         -> (Donors, Map.Map Int (Set.Set Mechanism))
+    step (donors, found) t@(T_SimpleCommand _ _ (T_NormalWord _ (T_Literal _ cmd : _) : args)) =
+        case cmd of
+            "printf" | Just n <- findPrintfVPositional args ->
+                (donors, addFound n PrintfV found)
+            "eval" | Just n <- evalOutParamPosition args ->
+                (donors, addFound n Eval found)
+            _ | cmd `elem` ["local", "declare", "typeset"] ->
+                let donors' = updateDonors t donors
+                    found'
+                        | hasFlagChar 'n' args
+                        , Just n <- findNamerefPositional donors' args
+                        = addFound n Nameref found
+                        | otherwise = found
+                in (donors', found')
+            _ -> (donors, found)
+    step st _ = st
+
+    addFound n mech = Map.insertWith Set.union n (Set.singleton mech)
 
 -- | Reconcile a name's list of top-level definition shapes per the
 -- redefinition rule: any shift-touched definition makes the whole name
@@ -485,6 +561,44 @@ prop_sc9014_definitionInSubshellSilent = verifyNot checkOutParamNaming
 -- nameref definition's own local name).
 prop_sc9014_multiMechanismSinglePosition = verifyCode checkOutParamNaming 9014
     "if true; then foo() { local -n REF=$1; REF=x; }; else foo() { printf -v \"$1\" x; }; fi\nfoo REF"
+
+-- U. Positive (#126163) -- indirect nameref binding (`local x=$2;
+-- local -n Y=$x`) resolves to position 2, and a colliding call-site
+-- argument at that position fires.
+prop_sc9014_indirectBindingColliding = verifyCode checkOutParamNaming 9014
+    "foo() { local x=$2; local -n Y=$x; Y=v; }\nfoo unused Y"
+
+-- V. Negative (#126163) -- same indirect-binding shape, non-colliding
+-- argument stays silent -- the false-positive-fix mirror for the
+-- indirect case.
+prop_sc9014_indirectBindingNonCollidingSilent = verifyNot checkOutParamNaming
+    "foo() { local x=$2; local -n Y=$x; Y=v; }\nfoo unused repo"
+
+-- W. Negative (#126163) -- a `-g`-declared intermediate does not
+-- resolve a position (not function-scoped, matches #126151's exclusion).
+prop_sc9014_indirectBindingGlobalIntermediateSilent = verifyNot checkOutParamNaming
+    "foo() { declare -g x=$2; local -n Y=$x; Y=v; }\nfoo unused Y"
+
+-- X. Negative (#126163 R1 finding 1, BLOCKING -- order sensitivity): a
+-- LATER `local x=$2` cannot retroactively establish an EARLIER
+-- `local -n Y=$x` -- the function is correctly NOT indexed at all
+-- (donor doesn't exist yet at the point the nameref line runs).
+prop_sc9014_indirectBindingForwardDonorSilent = verifyNot checkOutParamNaming
+    "foo() { local -n Y=$x; local x=$2; Y=v; }\nfoo unused Y"
+
+-- Y. Negative (#126163 R1 finding 2, BLOCKING -- conflicting donor): a
+-- name reassigned to a DIFFERENT position is permanently disqualified
+-- as a donor, never silently resolved to either position.
+prop_sc9014_indirectBindingConflictingDonorSilent = verifyNot checkOutParamNaming
+    "foo() { local x=$2; local x=$3; local -n Y=$x; Y=v; }\nfoo unused unused Y"
+
+-- Z. Negative (#126163) -- an indirect-binding donor whose value is a
+-- modifier/indirect expansion (`${x:-fallback}`, not a plain `$x`
+-- reference) never resolves -- confirms the AST-shape assumption
+-- verified for #126163 R1 (raw braced-reference text includes the
+-- modifier, which `isBashIdentifier` rejects).
+prop_sc9014_indirectBindingModifierExpansionSilent = verifyNot checkOutParamNaming
+    "foo() { local x=$2; local -n Y=${x:-fallback}; Y=v; }\nfoo unused Y"
 
 return []
 runTests = $(forAllProperties) (quickCheckWithResult (stdArgs { maxSuccess = 1 }))

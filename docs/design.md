@@ -890,9 +890,31 @@ not sufficient context.
     (same boundary set, extending `NilAvoidance.collectScope`'s
     pattern) for `printf -v "$N"`, a hardened `eval "$N=..."`
     normalizer (resolves bare/braced/split-quote/escaped-quote forms),
-    or `local`/`declare`/`typeset -n X=$N`. A literal `shift` anywhere
-    in the body marks the definition `shift-touched` (its true
-    positions are unknowable, not absent).
+    or `local`/`declare`/`typeset -n X=$N` — **direct or indirect
+    (#126163)**: `local -n X=$N` resolves immediately; `local -n
+    X=$donor` resolves via a SEQUENTIAL left-to-right fold (`Donors ::
+    Map.Map String (Maybe Int)`) tracking which named intermediate
+    locals unambiguously hold a positional value AS OF EACH POINT in
+    the scope — a later `local donor=$N` can never retroactively
+    establish an earlier `local -n X=$donor` (order matters here,
+    unlike position/redefinition resolution elsewhere in this check,
+    because indirect resolution is genuinely cross-statement; R1
+    finding, task #126163), and a donor reassigned to a CONFLICTING
+    position (or to anything non-positional) is permanently
+    disqualified (`Nothing`) rather than silently picking one of two
+    values. The donor's value token is validated via the RAW
+    pre-`getBracedReference` text (`concat (oversimplify inner)`,
+    checked with `isBashIdentifier`) rather than `getBracedReference`
+    itself — empirically confirmed (AST probe, #126163 R1) that
+    `getBracedReference` STRIPS modifiers, so `${x:-fallback}` and even
+    the semantically-different indirect-expansion form `${!x}` both
+    come back as bare `"x"`; using the raw text instead correctly
+    rejects both. The existing DIRECT-positional path
+    (`positionalRefOf`) has the same latent bug for `${1:-fallback}`
+    forms — pre-existing, out of #126163's scope, tracked separately
+    (#126222). A literal `shift` anywhere in the body marks the
+    definition `shift-touched` (its true positions are unknowable, not
+    absent).
   - **Redefinition rule**: any `shift-touched` definition makes the
     whole name `Ambiguous` (excluded from Pass 2). Otherwise, all of a
     name's top-level definitions must share the identical
@@ -938,11 +960,15 @@ not sufficient context.
   subshell/pipeline/backgrounded/nested-function context are never
   indexed (neither for positions nor for locals); ambiguous (multiple,
   conflicting) same-name POSITION definitions excluded entirely;
-  indirect/computed call sites (`"$cmd" args`) not recognized; indirect
-  nameref binding via a named intermediate local (`local x=$2; local -n
-  Y=$x`, rather than `local -n Y=$2` directly) is not traced at all —
-  such a function is invisible to Pass 1 entirely (tracked separately,
-  #126163).
+  indirect/computed call sites (`"$cmd" args`) not recognized;
+  indirect nameref binding (#126163, see Pass 1 above) is
+  order-sensitive by design — a donor established anywhere OTHER than
+  a same-scope, textually-preceding `local`/`declare`/`typeset`
+  (`-g` excluded) is not traced, including donors set inside a
+  mutually-exclusive branch the nameref line doesn't actually execute
+  after (a conservative, static approximation, not full flow
+  analysis); `positionalRefOf`'s own `${N:-modifier}`-stripping bug
+  (#126222) is a distinct, pre-existing gap in the direct-binding path.
 - **Live-verified** (3a, per SC9011/SC9013 precedent; re-verified
   #126151 2026-08-08): the original 2 "true positives"
   (`cmd.test.resolveWorkerWrap` / `cmd.test.materializeSubstrate` in
