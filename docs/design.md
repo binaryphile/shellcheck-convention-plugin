@@ -909,12 +909,13 @@ not sufficient context.
     `getBracedReference` STRIPS modifiers, so `${x:-fallback}` and even
     the semantically-different indirect-expansion form `${!x}` both
     come back as bare `"x"`; using the raw text instead correctly
-    rejects both. The existing DIRECT-positional path
-    (`positionalRefOf`) has the same latent bug for `${1:-fallback}`
-    forms — pre-existing, out of #126163's scope, tracked separately
-    (#126222). A literal `shift` anywhere in the body marks the
-    definition `shift-touched` (its true positions are unknowable, not
-    absent).
+    rejects both. The DIRECT-positional path (`positionalRefOf`) had
+    the same latent bug for `${1:-fallback}` forms — tracked separately
+    as #126222 and FIXED using the identical raw-text-validation
+    approach (all-digit check instead of `isBashIdentifier`, since a
+    positional reference's raw text is numeric rather than a name). A
+    literal `shift` anywhere in the body marks the definition
+    `shift-touched` (its true positions are unknowable, not absent).
   - **Redefinition rule**: any `shift-touched` definition makes the
     whole name `Ambiguous` (excluded from Pass 2). Otherwise, all of a
     name's top-level definitions must share the identical
@@ -967,8 +968,8 @@ not sufficient context.
   (`-g` excluded) is not traced, including donors set inside a
   mutually-exclusive branch the nameref line doesn't actually execute
   after (a conservative, static approximation, not full flow
-  analysis); `positionalRefOf`'s own `${N:-modifier}`-stripping bug
-  (#126222) is a distinct, pre-existing gap in the direct-binding path.
+  analysis). `positionalRefOf`'s own `${N:-modifier}`-stripping bug is
+  FIXED (#126222).
 - **Live-verified** (3a, per SC9011/SC9013 precedent; re-verified
   #126151 2026-08-08): the original 2 "true positives"
   (`cmd.test.resolveWorkerWrap` / `cmd.test.materializeSubstrate` in

@@ -2,7 +2,7 @@
 module OutParamNaming (check, OutParamNaming.runTests) where
 
 import ShellCheck.AST
-import ShellCheck.ASTLib (getBracedReference, getPath, oversimplify)
+import ShellCheck.ASTLib (getPath, oversimplify)
 import ShellCheck.AnalyzerLib
 import ShellCheck.Checks.Custom.Base
 import ShellCheck.Interface
@@ -116,31 +116,36 @@ functionBody t                         = t
 
 -- | Positional-reference extraction: bare `$N`/`${N}`, or a single level
 -- of double-quote wrapping one (`"$1"`). Returns Nothing for a named
--- variable or anything else.
+-- variable, a modifier-bearing expansion (`${1:-fallback}`), or anything
+-- else. #126222: deliberately does NOT use `getBracedReference` --
+-- empirically confirmed (AST probe, task #126163 R1) that
+-- `getBracedReference` STRIPS modifiers, so `${1:-fallback}` came back as
+-- bare "1" and silently misresolved as a faithful `$1` reference
+-- (`${1:-fallback}` means "use $1 if set, else literal fallback" --
+-- not the same thing). Uses the RAW pre-strip text (`concat (oversimplify
+-- inner)`) validated as all-digit, mirroring `namedVarRefOf`'s sibling fix
+-- (below) for the named-variable case.
 positionalRefOf :: Token -> Maybe Int
 positionalRefOf (T_DollarBraced _ _ inner) =
-    case reads (getBracedReference (concat (oversimplify inner))) of
-        [(n, "")] -> Just n
-        _         -> Nothing
+    case concat (oversimplify inner) of
+        s | not (null s) && all isDigit s -> Just (read s)
+        _                                 -> Nothing
 positionalRefOf (T_DoubleQuoted _ [inner]) = positionalRefOf inner
 positionalRefOf _ = Nothing
 
 -- | Named (non-positional) variable-reference extraction: bare `$x`/
 -- `${x}`, or a single level of double-quote wrapping one (`"$x"`).
--- #126163: sibling to `positionalRefOf`, but deliberately does NOT use
--- `getBracedReference` -- empirically confirmed (AST probe, task #126163
--- R1) that `getBracedReference` STRIPS modifiers (`${x:-fallback}` and
--- even the indirect-expansion form `${!x}` both come back as bare "x"),
--- which would make `local -n Y=${x:-fallback}` (or worse, `${!x}`, a
--- semantically different indirect-expansion form) silently misresolve
--- as a faithful `$x` reference. This same latent bug exists in the
--- EXISTING `positionalRefOf` for the direct-positional case
--- (`${1:-fallback}` misresolves as `$1`) -- pre-existing, out of this
--- cycle's scope, tracked separately (#126222). Uses the RAW pre-strip
--- text (`concat (oversimplify inner)`, same extraction `positionalRefOf`
--- performs before handing it to `getBracedReference`) validated via
--- `isBashIdentifier`, which correctly rejects both modifier forms since
--- their raw text ("x:-fallback", "!x") is not a plain identifier.
+-- #126163: sibling to `positionalRefOf`, same raw-text-validation
+-- approach (see above) -- deliberately does NOT use `getBracedReference`,
+-- for the same modifier-stripping reason (`${x:-fallback}` and even the
+-- indirect-expansion form `${!x}` both come back as bare "x" through
+-- `getBracedReference`, which would make `local -n Y=${x:-fallback}` (or
+-- `${!x}`, a semantically different indirect-expansion form) silently
+-- misresolve as a faithful `$x` reference). Uses the RAW pre-strip text
+-- (`concat (oversimplify inner)`, same extraction `positionalRefOf`
+-- performs) validated via `isBashIdentifier`, which correctly rejects
+-- both modifier forms since their raw text ("x:-fallback", "!x") is not
+-- a plain identifier.
 namedVarRefOf :: Token -> Maybe String
 namedVarRefOf (T_DollarBraced _ _ inner) =
     case concat (oversimplify inner) of
@@ -494,6 +499,22 @@ prop_sc9014_bareLocalCollides = verifyCode checkOutParamNaming 9014
 -- must never leak into function B's collision set.
 prop_sc9014_crossFunctionIsolationSilent = verifyNot checkOutParamNaming
     "foo() { local -n REF=$1; local aOnly; REF=x; }\nbar() { local -n REF=$1; REF=x; }\nbar aOnly"
+
+-- G7. Negative (#126222 -- the false-positive fix): `local -n
+-- Y=${1:-fallback}` is NOT a faithful `$1` reference (means "use $1 if
+-- set, else literal fallback"), so it must NOT register position 1 as
+-- an out-param at all. Before the fix, `getBracedReference` stripped the
+-- `:-fallback` modifier and this misresolved as a bare `$1`, so a
+-- call-site argument colliding with the callee's own local ("tmp" here)
+-- would incorrectly fire SC9014.
+prop_sc9014_modifierPositionalSilent = verifyNot checkOutParamNaming
+    "foo() { local -n Y=${1:-fallback}; local tmp; Y=x; }\nfoo tmp"
+
+-- G8. Positive -- the ordinary bare `${1}` (no modifier) form must still
+-- collide, proving the fix didn't over-correct into never resolving a
+-- braced positional reference at all.
+prop_sc9014_bracedPositionalStillCollides = verifyCode checkOutParamNaming 9014
+    "foo() { local -n Y=${1}; local tmp; Y=x; }\nfoo tmp"
 
 -- H. Positive -- forward-reference call site (call precedes definition),
 -- colliding argument.
