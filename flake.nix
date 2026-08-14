@@ -2,7 +2,10 @@
   description = "IFS/noglob convention checks plugin for ShellCheck (SC9001-SC9009)";
 
   inputs = {
-    shellcheck.url = "github:binaryphile/shellcheck";
+    shellcheck = {
+      url = "github:binaryphile/shellcheck";
+      inputs.nixpkgs.follows = "nixpkgs";
+    };
     nixpkgs.url = "github:NixOS/nixpkgs/nixpkgs-unstable";
     flake-utils.url = "github:numtide/flake-utils";
   };
