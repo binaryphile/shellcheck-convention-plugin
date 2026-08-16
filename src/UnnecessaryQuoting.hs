@@ -69,6 +69,9 @@ isInProtectiveQuotes shell parents t = fromMaybe False $ do
     findDQ (x:xs) = case x of
         T_DoubleQuoted {} -> Just x
         T_DollarDoubleQuoted {} -> Nothing  -- skip $"..."
+        T_DollarExpansion {} -> Nothing     -- command-substitution boundary (#141293)
+        T_Backticked {} -> Nothing          -- command-substitution boundary (#141293)
+        T_ProcSub {} -> Nothing             -- process-substitution boundary (#141293)
         _ -> findDQ xs
 
     isSoleContent (T_DoubleQuoted _ list) = length list == 1
@@ -105,6 +108,17 @@ prop_sc9003_dollarDQ = verifyNot checkUnnecessaryQuoting (disciplineHdr ++ "echo
 -- Tests: discipline-absent case (SC9003 silent regardless of trigger; #17958 gating)
 prop_sc9003_silent_no_discipline = verifyNot checkUnnecessaryQuoting "var=hello; echo \"$var\""
 prop_sc9003_silent_partial_discipline = verifyNot checkUnnecessaryQuoting "IFS=$'\\n'; var=hello; echo \"$var\""
+
+-- #141293: a bare variable inside an INNER, unquoted command substitution
+-- must not inherit protective-quote status from an OUTER double-quoted
+-- command substitution wrapping it -- findDQ must stop at the inner
+-- cmdsub boundary rather than walking past it to the outer DQ.
+prop_sc9003_doublyNestedCmdsub_notFire = verifyNot checkUnnecessaryQuoting
+    (disciplineHdr ++ "d9=foo; s9=$(printf '%s' \"$(realpath -m -- $d9)\" | tr '/._' '---')")
+-- Single-level, unquoted, no outer DQ at all -- was never buggy, kept as
+-- an explicit regression anchor matching the task's own non-reproducing shape.
+prop_sc9003_singleNestedCmdsub_unquoted_notFire = verifyNot checkUnnecessaryQuoting
+    (disciplineHdr ++ "d9=foo; s9=$(realpath -m -- $d9)")
 
 return []
 runTests = $(forAllProperties) (quickCheckWithResult (stdArgs { maxSuccess = 1 }))
