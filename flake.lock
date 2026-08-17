@@ -67,11 +67,11 @@
         ]
       },
       "locked": {
-        "lastModified": 1786723826,
-        "narHash": "sha256-60MaDXoZLRnpPQfJNSf5vfmAGdXRpuwMYZhLnKtFt6M=",
+        "lastModified": 1787001327,
+        "narHash": "sha256-chiMpTRFoX+Vbl/DQRI8iCWBhSPjgHQg6aEKSDm5rLs=",
         "owner": "binaryphile",
         "repo": "shellcheck",
-        "rev": "ed717e75680fe9436d7e24c55bb811c7a06203aa",
+        "rev": "5bf512e69514e25d8b5c5dabbe56d7ac6f029d73",
         "type": "github"
       },
       "original": {

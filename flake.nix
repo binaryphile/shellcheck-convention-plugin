@@ -16,7 +16,9 @@
         pkgs = import nixpkgs { inherit system; };
         haskellPackages = pkgs.haskellPackages.override {
           overrides = hself: hsuper: {
-            ShellCheck = hself.callCabal2nix "ShellCheck" shellcheck {};
+            ShellCheck = pkgs.haskell.lib.dontCheck (pkgs.haskell.lib.dontHaddock (
+              hself.callCabal2nix "ShellCheck" shellcheck {}
+            ));
           };
         };
         ghc = haskellPackages.ghcWithPackages (p: [ p.ShellCheck p.QuickCheck ]);
