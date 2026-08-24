@@ -183,7 +183,7 @@ mapping is direct; checks without a published source are tagged
 
 - **Module**: `src/TaintAssignment.hs`
 - **Severity**: `warn`
-- **Always-on**: no — `cdName = "taint-assignment"`
+- **Always-on**: yes — `cdName = "taint-assignment"`
 - **Source rule**: IFS/noglob discipline (project-local).
 - **Pattern**: `x=$(cmd)` where `x` does NOT have the `_` taint
   suffix and `cmd` is not in the allowlisted-pure-output set
@@ -206,7 +206,7 @@ mapping is direct; checks without a published source are tagged
 
 - **Module**: `src/UnnecessaryQuoting.hs`
 - **Severity**: `style` (note)
-- **Always-on**: no — `cdName = "unnecessary-quoting"`
+- **Always-on**: yes — `cdName = "unnecessary-quoting"`
 - **Source rule**: IFS/noglob discipline (project-local; inverse
   of SC9001).
 - **Pattern**: a non-taint variable expansion that's quoted in a
@@ -240,7 +240,7 @@ mapping is direct; checks without a published source are tagged
 
 - **Module**: `src/Numerics.hs`
 - **Severity**: `style` (note)
-- **Always-on**: no — `cdName = "numerics-in-brackets"`
+- **Always-on**: yes — `cdName = "numerics-in-brackets"`
 - **Source rule**: bash-style-guide §7 — prefer `(( x == N ))`
   over `[[ $x -eq N ]]` for integer comparisons.
 - **Pattern**: `TC_Binary` with operator in
@@ -252,7 +252,7 @@ mapping is direct; checks without a published source are tagged
 
 - **Module**: `src/Inclusive.hs`
 - **Severity**: `warn`
-- **Always-on**: no — `cdName = "inclusive-language"`
+- **Always-on**: yes — `cdName = "inclusive-language"`
 - **Source rule**: inclusive-language convention (project-local).
 - **Pattern**: case-insensitive substring `whitelist` or `blacklist`
   in:
@@ -276,7 +276,7 @@ mapping is direct; checks without a published source are tagged
 
 - **Module**: `src/Docstring.hs`
 - **Severity**: `style` (note)
-- **Always-on**: no — `cdName = "docstring-shape"`
+- **Always-on**: yes — `cdName = "docstring-shape"`
 - **Source rule**: bash-style-guide §11 — function docstrings name
   the function as subject.
 - **Pattern**: `T_Function` with a non-empty contiguous comment
@@ -294,7 +294,7 @@ mapping is direct; checks without a published source are tagged
 
 - **Module**: `src/ListInit.hs`
 - **Severity**: `warn`
-- **Always-on**: no — `cdName = "list-array-misuse"`
+- **Always-on**: yes — `cdName = "list-array-misuse"`
 - **Source rule**: bash-style-guide §3 line 72 — `*List` suffix
   signals a serialized list using IFS=\n as the separator;
   must-quote on every expansion. Arrays use plural-noun suffix
@@ -332,7 +332,7 @@ not sufficient context.
 
 - **Module**: `src/NilAvoidance.hs`
 - **Severity**: `warn`
-- **Always-on**: no — `cdName = "nil-avoidance"`
+- **Always-on**: yes — `cdName = "nil-avoidance"`
 - **Source rule**: bash-style-guide §6 "Initialize at declaration —
   don't ship uninitialized-then-appended variables" (accelecon/jeeves
   commit b7ad13e). Operative case: within one scope, every path
@@ -418,7 +418,7 @@ not sufficient context.
 
 - **Module**: `src/IfsNoglobDiscipline.hs`
 - **Severity**: `style` (note)
-- **Always-on**: no — `cdName = "ifs-noglob-discipline"`
+- **Always-on**: yes — `cdName = "ifs-noglob-discipline"`
 - **Source rule**: bash-style-guide §3 "Enforcement" — files that
   use double-quoted variable expansions in splitting contexts should
   adopt `IFS=$'\n'` + `set -o noglob` at file top so the convention's
