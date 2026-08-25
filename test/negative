@@ -19,6 +19,9 @@ echo $plain
 # Also SC9008 silent (List + string value = correct §3 form: IFS-serialized string).
 hostList=foo
 
+# Lists suffix without '_' taint suffix: SC9004 silent.
+hostLists=(a b)
+
 # SC9005-silent: string emptiness and file/path tests still belong in [[ ]].
 x=
 [[ -z $x ]] && echo empty

@@ -7,6 +7,8 @@ module Convention (
     hasTaintSuffix,
     hasListSuffix,
     hasListSuffixOnBare,
+    hasListsSuffix,
+    hasListsSuffixOnBare,
     stripTaintSuffix,
     fileHasIfsNoglobDiscipline,
     isIntegerTyped
@@ -47,6 +49,24 @@ hasListSuffixOnBare name =
 -- a List suffix. Strips '_' first and delegates to hasListSuffixOnBare.
 hasListSuffix :: String -> Bool
 hasListSuffix = hasListSuffixOnBare . stripTaintSuffix
+
+-- | True if the bare name (no taint suffix) ends in 'Lists' or
+-- 'Lists<X>' where X is a single uppercase ASCII library suffix
+-- letter. Examples: commandLists (yes), hostListsQ (yes), listsItems
+-- (no). Promoted from ListsInit (task #87842) once MutualExclusive
+-- became a second consumer.
+hasListsSuffixOnBare :: String -> Bool
+hasListsSuffixOnBare name =
+    "Lists" `isSuffixOf` name
+    || (length name >= 6
+        && isAsciiUpper (last name)
+        && "Lists" `isSuffixOf` init name)
+
+-- | True if the name (which must already have a taint suffix) also has
+-- a Lists suffix. Strips '_' first and delegates to
+-- hasListsSuffixOnBare. Mirrors hasListSuffix's shape.
+hasListsSuffix :: String -> Bool
+hasListsSuffix = hasListsSuffixOnBare . stripTaintSuffix
 
 -- | True iff the script enclosing the given token has IFS+noglob
 -- discipline at top-level scope (UC-42 #17958). The predicate is

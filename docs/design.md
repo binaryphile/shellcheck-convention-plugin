@@ -227,14 +227,19 @@ mapping is direct; checks without a published source are tagged
 - **Severity**: `err`
 - **Always-on**: yes
 - **Source rule**: project-local — taint convention says `_` and
-  `List` cannot coexist on one identifier.
+  `List`/`Lists` cannot coexist on one identifier.
 - **Pattern**: `T_Assignment` or expansion where the name has BOTH
-  the `_` taint suffix and the `List` suffix (with optional
-  single-uppercase library marker).
+  the `_` taint suffix and the `List` suffix, OR both the `_` taint
+  suffix and the `Lists` suffix (each with optional single-uppercase
+  library marker). The `Lists` half (task #87842) reuses
+  `Convention.hasListsSuffixOnBare`, promoted from `ListsInit.hs`
+  (its original sole owner) into `Convention.hs` now that
+  `MutualExclusive.hs` is a second consumer.
 - **Notes**: The List/array distinction here pivots on a different
-  question than SC9008's — SC9004 forbids combining `_` and `List`
-  on one name; SC9008 enforces the §3 rule that `*List` is an
-  IFS-serialized string (not an array).
+  question than SC9008's/SC9013's — SC9004 forbids combining `_` with
+  either `List` or `Lists` on one name; SC9008/SC9013 enforce the §3
+  rule that `*List` is an IFS-serialized string and `*Lists` is a true
+  array.
 
 ### SC9005 — Numeric comparison in `[[ ]]` / `[ ]`
 
@@ -798,8 +803,8 @@ not sufficient context.
 - **Mutual exclusion with SC9004**: the style guide also states `_`
   and `*Lists` are mutually exclusive on arrays (mirroring the
   existing `_`+`*List` check SC9004 already enforces for scalars).
-  Extending SC9004 to cover this is deferred — task #87842, no
-  trigger, pure deferral (1b scope decision).
+  SC9004 now covers this too (task #87842) — see the SC9004 entry
+  below.
 - **False-positive shape (accepted, mirrors SC9008's own documented
   `declare -a` blind spot)**: `declare -a xLists=foo` / `local -a
   xLists=foo` assigns `foo` to `xLists[0]` in bash (the `-a` flag

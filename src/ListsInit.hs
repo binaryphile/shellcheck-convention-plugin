@@ -5,9 +5,9 @@ import ShellCheck.AST
 import ShellCheck.ASTLib
 import ShellCheck.AnalyzerLib
 import ShellCheck.Checks.Custom.Base
+import Convention (hasListsSuffixOnBare)
 import ShellCheck.Interface
 
-import Data.Char (isAsciiUpper)
 import Data.List (isSuffixOf)
 import Test.QuickCheck.All (forAllProperties)
 import Test.QuickCheck.Test (quickCheckWithResult, stdArgs, maxSuccess)
@@ -51,17 +51,6 @@ checkListsMisuse _ = return ()
 isArray :: Token -> Bool
 isArray (T_Array _ _) = True
 isArray _             = False
-
--- | True if the bare name ends in 'Lists' or 'Lists<X>' where X is a
--- single uppercase ASCII library suffix letter. Mirrors
--- Convention.hasListSuffixOnBare's two-branch shape.
--- Examples: commandLists (yes), hostListsQ (yes), listsItems (no).
-hasListsSuffixOnBare :: String -> Bool
-hasListsSuffixOnBare name =
-    "Lists" `isSuffixOf` name
-    || (length name >= 6
-        && isAsciiUpper (last name)
-        && "Lists" `isSuffixOf` init name)
 
 -- Best-effort *List rename suggestion, handling both branches of
 -- hasListsSuffixOnBare precisely (the library-suffix case needs the
