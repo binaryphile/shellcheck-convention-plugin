@@ -804,7 +804,7 @@ not sufficient context.
   and `*Lists` are mutually exclusive on arrays (mirroring the
   existing `_`+`*List` check SC9004 already enforces for scalars).
   SC9004 now covers this too (task #87842) — see the SC9004 entry
-  below.
+  above.
 - **False-positive shape (accepted, mirrors SC9008's own documented
   `declare -a` blind spot)**: `declare -a xLists=foo` / `local -a
   xLists=foo` assigns `foo` to `xLists[0]` in bash (the `-a` flag
