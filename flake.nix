@@ -16,9 +16,20 @@
         pkgs = import nixpkgs { inherit system; };
         haskellPackages = pkgs.haskellPackages.override {
           overrides = hself: hsuper: {
-            ShellCheck = pkgs.haskell.lib.dontCheck (pkgs.haskell.lib.dontHaddock (
+            # Blanket doHaddock=false across the whole package set (dotfiles#112524):
+            # the prior per-package `dontHaddock ShellCheck` below only stripped
+            # ShellCheck's OWN doc output -- its transitive deps (assoc, colour,
+            # prettyprinter, ansi-terminal, optparse-applicative, hashable, etc.)
+            # and QuickCheck's deps still built full haddock docs by nixpkgs'
+            # per-package default, since ghcWithPackages pulls them from this same
+            # overridden set. Overriding mkDerivation itself applies to every
+            # package built through this haskellPackages set, closing that gap.
+            # Verified empirically: pkgs.haskellPackages.assoc.outputs == [out doc]
+            # vs this override's assoc.outputs == [out] (dotfiles#112524 investigation).
+            mkDerivation = args: hsuper.mkDerivation (args // { doHaddock = false; });
+            ShellCheck = pkgs.haskell.lib.dontCheck (
               hself.callCabal2nix "ShellCheck" shellcheck {}
-            ));
+            );
           };
         };
         ghc = haskellPackages.ghcWithPackages (p: [ p.ShellCheck p.QuickCheck ]);
