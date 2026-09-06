@@ -46,6 +46,15 @@ checkUnnecessaryQuoting token = case getExpansionName token of
   where
     basicWarn name =
         not (hasTaintSuffix name)
+        -- *List/*Lists suffix (task #37c5aa81d3e03bc9): a correctly-named
+        -- *List/*Lists variable holding a serialized newline-delimited
+        -- list MUST stay quoted at its call sites -- SC9003 must not
+        -- suggest removing that quoting just because the name lacks '_'.
+        -- Live-anchor: era commit 1aee8af's SC9003-driven quote removal
+        -- on queryStreamsForId's streamsList/newStreamList args shipped
+        -- a real regression (era#140986, era#139420/#139774).
+        && not (hasListSuffix name)
+        && not (hasListsSuffix name)
         && name `notElem` specialVars
         && not (isArrayExpansion token)
         && not (isCountingReference token)
@@ -93,6 +102,14 @@ prop_sc9003_arg = verify checkUnnecessaryQuoting (disciplineHdr ++ "x=1; cmd \"$
 prop_sc9003_literalPrefix = verifyNot checkUnnecessaryQuoting (disciplineHdr ++ "plain=x; echo \"value: $plain\"")
 prop_sc9003_literalPrefixAndSuffix = verifyNot checkUnnecessaryQuoting (disciplineHdr ++ "plain=x; echo \"prefix-$plain-suffix\"")
 prop_sc9003_tainted = verifyNot checkUnnecessaryQuoting (disciplineHdr ++ "var_=x; echo \"$var_\"")
+
+-- Tests: *List/*Lists suffix exemption (task #37c5aa81d3e03bc9) -- a
+-- correctly-quoted *List/*Lists variable must not be told its quoting
+-- is unnecessary. Live-anchor: era commit 1aee8af's SC9003-driven quote
+-- removal on streamsList/newStreamList shipped a real regression
+-- (era#140986, era#139420/#139774).
+prop_sc9003_listSuffix = verifyNot checkUnnecessaryQuoting (disciplineHdr ++ "streamsList=x; echo \"$streamsList\"")
+prop_sc9003_listsSuffix = verifyNot checkUnnecessaryQuoting (disciplineHdr ++ "commandLists=x; echo \"$commandLists\"")
 prop_sc9003_unquoted = verifyNot checkUnnecessaryQuoting (disciplineHdr ++ "var=hello; echo $var")
 prop_sc9003_special_at = verifyNot checkUnnecessaryQuoting (disciplineHdr ++ "echo \"$@\"")
 prop_sc9003_special_star = verifyNot checkUnnecessaryQuoting (disciplineHdr ++ "echo \"$*\"")

@@ -30,6 +30,13 @@ checkCmdSubNoUnderscore t@(T_Assignment id _ name _ value)
     | not (null name)
     , isLowerStart name
     , not (hasTaintSuffix name)
+    -- *List/*Lists suffix (task #37c5aa81d3e03bc9): bash-style-guide.md
+    -- documents these as an EQUALLY VALID quoting-required convention
+    -- alongside the '_' suffix (a serialized newline-delimited list is
+    -- exactly the hazard '_' guards against) -- a name already satisfying
+    -- either must not also be told to add '_'.
+    , not (hasListSuffix name)
+    , not (hasListsSuffix name)
     , containsCommandSub value
     , not (isAllowlistedCommand value)
     = do
@@ -84,6 +91,17 @@ prop_sc9002_unknown = verify checkCmdSubNoUnderscore "data=$(somecommand)"
 -- Tests: should NOT fire
 prop_sc9002_tainted = verifyNot checkCmdSubNoUnderscore "content_=$(cat file)"
 prop_sc9002_uppercase = verifyNot checkCmdSubNoUnderscore "FOO=$(cat file)"
+
+-- Tests: *List/*Lists suffix exemption (task #37c5aa81d3e03bc9) -- a
+-- name already satisfying the List/Lists convention must not also be
+-- told to add '_'.
+prop_sc9002_listSuffix = verifyNot checkCmdSubNoUnderscore "streamsList=$(cat file)"
+prop_sc9002_listSuffixLibSuffix = verifyNot checkCmdSubNoUnderscore "streamsListQ=$(cat file)"
+prop_sc9002_listsSuffix = verifyNot checkCmdSubNoUnderscore "commandLists=$(cat file)"
+prop_sc9002_listsSuffixLibSuffix = verifyNot checkCmdSubNoUnderscore "commandListsQ=$(cat file)"
+-- Regression guard: a name merely CONTAINING "List" mid-word, not as a
+-- suffix, still fires (e.g. "listItems" per Convention.hs's own example).
+prop_sc9002_listMidWord_stillFires = verifyCode checkCmdSubNoUnderscore 9002 "listItems=$(cat file)"
 prop_sc9002_basename = verifyNot checkCmdSubNoUnderscore "name=$(basename /foo/bar)"
 prop_sc9002_dirname = verifyNot checkCmdSubNoUnderscore "dir=$(dirname /foo/bar)"
 prop_sc9002_hostname = verifyNot checkCmdSubNoUnderscore "host=$(hostname)"

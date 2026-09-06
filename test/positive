@@ -19,6 +19,13 @@ content=$(cat /etc/hostname)
 plain=hello
 echo "$plain"
 
+# *List suffix (no '_'), quoted under discipline: SC9003 silent (task
+# #37c5aa81d3e03bc9 -- List is an equally valid quoting-required
+# convention; this is the exact shape era commit 1aee8af got wrong,
+# shipping a real regression).
+streamsList=x
+echo "$streamsList"
+
 # SC9004: '_' taint suffix and 'List' suffix are mutually exclusive.
 hostList_=foo
 

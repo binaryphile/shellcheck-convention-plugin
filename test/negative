@@ -19,6 +19,16 @@ echo $plain
 # Also SC9008 silent (List + string value = correct §3 form: IFS-serialized string).
 hostList=foo
 
+# Cmdsub assigned to a *List-suffixed variable (no '_'): SC9002 silent
+# (task #37c5aa81d3e03bc9 -- List is an equally valid quoting-required
+# convention, not a missing-'_' mistake). Note: *Lists (plural) is
+# deliberately NOT exercised here -- a scalar cmdsub assignment to a
+# *Lists-suffixed name is ALWAYS wrong per SC9013 (true-array
+# convention), so that combination can't occur in valid code; see
+# prop_sc9002_listsSuffix in src/TaintAssignment.hs for that exemption's
+# unit-level coverage instead.
+streamsList=$(cat /etc/hostname)
+
 # Lists suffix without '_' taint suffix: SC9004 silent.
 hostLists=(a b)
 
