@@ -111,3 +111,20 @@ foo9014() {
   REF=x
 }
 foo9014 REF
+
+# SC9015: `local -i NAME=0` whose next statement is an unconditional,
+# command-less plain assignment to NAME -- the =0 is redundant
+# (bash-style-guide "Default to a bare local -i x"). Two cases; bin/verify
+# asserts exactly two SC9015 findings here.
+
+pos9015rc() {
+  local -i rc=0
+  rc=$?
+  echo $rc
+}
+
+pos9015count() {
+  local -i count=0
+  count=$(wc -l </dev/null)
+  echo $count
+}

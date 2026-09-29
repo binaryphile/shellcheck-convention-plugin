@@ -113,7 +113,7 @@ bar9002i_a() {
 # declared variable in scope.
 
 bar9002i_b() {
-    local -i n=0
+    local -i n
     n=$(nproc)
     (( n > 0 )) && return 0
 }
@@ -136,7 +136,7 @@ bar9002i_c() {
 # routed around).
 
 bar9001i_a() {
-    local -i rc=0
+    local -i rc
     rc=$?
     echo $rc
 }
@@ -387,3 +387,169 @@ bar9014() {
 }
 bar9014 UPPER
 bar9014 lower
+
+# SC9015 must stay silent on every shape below: each one either reads the
+# variable before assigning it, assigns conditionally or not at all, lets
+# something run between the declaration and the assignment, or has a value
+# that could read the variable (bash-style-guide "Default to a bare
+# local -i x" and its read-first exception; design.md SC9015 policy).
+
+neg9015readFirst() {
+  local -i i=0 n=3
+  while (( i < n )); do
+    i+=1
+  done
+}
+
+neg9015loopCounter() {
+  local -i i=0
+  while (( i < 3 )); do
+    i=$(( i + 1 ))
+  done
+}
+
+neg9015conditional() {
+  local -i n=0
+  [[ -n ${1:-} ]] && n=5
+  echo $n
+}
+
+neg9015callBetweenHelper() {
+  echo $x9015
+}
+
+neg9015callBetween() {
+  local -i x9015=0
+  neg9015callBetweenHelper
+  x9015=1
+}
+
+neg9015indirection() {
+  local ref=x
+  local -i x=0
+  : ${!ref}
+  x=1
+}
+
+neg9015evalBetween() {
+  local -i x=0
+  eval 'echo "$x"'
+  x=1
+}
+
+neg9015selfRef() {
+  local -i c=0
+  c=$(( c + 1 ))
+  echo $c
+}
+
+neg9015arithCompound() {
+  local -i c=0
+  (( c += 1 ))
+  echo $c
+}
+
+neg9015sameFileFunctionHelper() {
+  echo 5
+}
+
+neg9015sameFileFunction() {
+  local -i x=0
+  x=$(neg9015sameFileFunctionHelper)
+  echo $x
+}
+
+neg9015nonZeroInit() {
+  local -i x=1
+  x=2
+  echo $x
+}
+
+neg9015bare() {
+  local -i x
+  x=2
+  echo $x
+}
+
+neg9015exported() {
+  local -ix x=0
+  x=2
+  echo $x
+}
+
+neg9015global() {
+  declare -gi x=0
+  x=2
+  echo $x
+}
+
+neg9015readonly() {
+  local -ir x=0
+  echo $x
+}
+
+neg9015readonlyDeclare() {
+  declare -ir x=0
+  echo $x
+}
+
+neg9015readInto() {
+  local -i x=0
+  read -r x </dev/null || true
+  echo $x
+}
+
+neg9015envPrefix() {
+  local -i x=0
+  x=1 true
+  echo $x
+}
+
+neg9015bareIdentifier() {
+  local expr='1+1'
+  local -i x=0
+  x=expr
+  echo $x
+}
+
+neg9015evalValue() {
+  local code='printf 5'
+  local -i x=0
+  x=$(eval $code)
+  echo $x
+}
+
+neg9015sourceValue() {
+  local -i x=0
+  x=$(source /dev/null; echo 5)
+  echo $x
+}
+
+neg9015dotValue() {
+  local -i x=0
+  x=$(. /dev/null; echo 5)
+  echo $x
+}
+
+neg9015multiVar() {
+  local -i x=0 y=x
+  x=5
+  echo $x $y
+}
+
+neg9015divZero() {
+  local -i x=0
+  x=1/0
+  echo $x
+}
+
+neg9015separated() {
+  local -i x=0
+  echo start
+  x=2
+  echo $x
+}
+
+declare -i neg9015scriptLevel=0
+neg9015scriptLevel=5
+echo $neg9015scriptLevel

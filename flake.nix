@@ -58,6 +58,7 @@
                 src/SentinelLiteral.hs \
                 src/SingleQuoteDefault.hs \
                 src/OutParamNaming.hs \
+                src/RedundantIntInit.hs \
                 src/Plugin.hs \
                 -o libconvention-checks.so \
                 -no-hs-main

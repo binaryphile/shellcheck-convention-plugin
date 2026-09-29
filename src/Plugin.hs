@@ -22,6 +22,7 @@
       SC9012 - Double-quoted literal should be single-quoted (single-quote-default)
       SC9013 - *Lists should be a true bash array, not scalar (lists-scalar-misuse)
       SC9014 - Cross-scope out-param call-site argument should be UPPER_CASE (outparam-naming)
+      SC9015 - Redundant =0 on local -i assigned by the next statement (redundant-int-init)
 -}
 module Plugin where
 
@@ -44,6 +45,7 @@ import qualified IfsNoglobDiscipline
 import qualified SentinelLiteral
 import qualified SingleQuoteDefault
 import qualified OutParamNaming
+import qualified RedundantIntInit
 
 foreign export ccall plugin_api_version :: IO CInt
 foreign export ccall plugin_init :: IO (StablePtr [CustomCheck])
@@ -66,5 +68,6 @@ plugin_init = newStablePtr [
     SentinelLiteral.check,     -- SC9011
     SingleQuoteDefault.check,  -- SC9012
     ListsInit.check,           -- SC9013
-    OutParamNaming.check       -- SC9014
+    OutParamNaming.check,      -- SC9014
+    RedundantIntInit.check     -- SC9015
   ]
