@@ -997,6 +997,61 @@ not sufficient context.
   logic on all 4 files. No performance regression versus the 13-check
   baseline.
 
+### SC9015 -- Redundant `=0` on `local -i` assigned before its first read
+
+- **Module**: `src/RedundantIntInit.hs`
+- **Severity**: `style`
+- **Always-on**: yes -- `cdName = "redundant-int-init"`
+- **Source rule**: bash-style-guide "Default to a bare `local -i x` (no
+  `=0`) when the variable is ASSIGNED before its first read", with its
+  exception: initialize explicitly when the variable is READ first (a loop
+  counter tested in its own condition), because a bare `local -i i` is
+  unset, not 0, and a read under `set -u` fails. Task
+  shellcheck-convention-plugin#e0434a2fdb3e1c19.
+- **Fires** (all must hold):
+  - the declaration is a statement inside a function body (any nesting
+    within that function's own statement lists); script-level
+    declarations never fire;
+  - command `local`, `declare` or `typeset` (never `readonly`), flags
+    include `i` and none of `g`, `x`, `r`, `n`, `a`, `A`, `p`, `f`, `F`;
+  - it declares exactly one variable, `NAME=0` (literal `0`, no index);
+  - the IMMEDIATELY NEXT statement in the same list is a command-less
+    plain assignment `NAME=value` (one command, no redirects, no words);
+  - the value does not mention NAME (reads, `${!...}` indirection, or a
+    literal containing NAME as a whole word), is not a bare identifier
+    (an integer assignment arithmetic-evaluates it), contains no literal
+    `/0` or `%0`, calls no function defined in the same file, and runs
+    no dynamic-code command (`eval`, `source`, `.`, `trap`, `declare`,
+    `typeset`, `local`, `export`) anywhere in its subtree.
+- **Policy: a style heuristic, not a soundness proof.** The guide's rule is
+  itself stated lexically. A fully sound check would fire on almost
+  nothing, so this one stays narrow and names its residual false
+  positives: (a) a DEBUG or RETURN trap that reads the local between the
+  two statements (the style guide bans both traps); (b) a value whose
+  variables or command-substitution output evaluate to an arithmetic
+  expression mentioning NAME; (c) a function from a sourced library,
+  called inside the value, that reads the caller's local by dynamic
+  scope; (d) an adjacent assignment that fails at runtime while execution
+  continues without errexit and later reads NAME. Suppress a deliberate
+  exception per site with `# shellcheck disable=SC9015`.
+- **Design history**: 7 adversarial `/grade` rounds (plan R1-R6 SEND
+  BACK, R7 APPROVE). R1: "next sibling statement that mentions NAME" is
+  not "first read" under bash's dynamic scope (an intervening function
+  call, `${!ref}` or `eval` reads the local) -- narrowed to adjacency,
+  function-local only. R2: integer assignment arithmetic-evaluates its
+  value, a DEBUG trap under `set -T` runs between adjacent statements,
+  and a sourced function can read the local -- resolved as the explicit
+  heuristic policy above, accepted at R3. R3-R6 each added one
+  mechanically avoidable exclusion: readonly, `eval`/`source`/`.` in the
+  value, multi-variable declarations, and runtime assignment failure
+  (named residual d). The task text proposed reusing SC9009's lexical
+  first-reference walk; rejected because a conditional or
+  self-referencing write would be treated as an initialization.
+- **Coverage**: every positive and negative shape is a function in
+  `test/positive` / `test/negative`, executed by `bin/verify`; the inline
+  `prop_sc9015_*` properties mirror them as documentation (section 2.2:
+  the flake does not run props).
+
 ## 4. Autofix (-f diff)
 
 Pilot (#75070): a plugin check can attach a ShellCheck-native `Fix` to
