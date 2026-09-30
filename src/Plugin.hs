@@ -23,6 +23,7 @@
       SC9013 - *Lists should be a true bash array, not scalar (lists-scalar-misuse)
       SC9014 - Cross-scope out-param call-site argument should be UPPER_CASE (outparam-naming)
       SC9015 - Redundant =0 on local -i assigned by the next statement (redundant-int-init)
+      SC9016 - Blank test via ${var//[class]/}; use a glob (blank-substitution)
 -}
 module Plugin where
 
@@ -46,6 +47,7 @@ import qualified SentinelLiteral
 import qualified SingleQuoteDefault
 import qualified OutParamNaming
 import qualified RedundantIntInit
+import qualified BlankSubstitution
 
 foreign export ccall plugin_api_version :: IO CInt
 foreign export ccall plugin_init :: IO (StablePtr [CustomCheck])
@@ -69,5 +71,6 @@ plugin_init = newStablePtr [
     SingleQuoteDefault.check,  -- SC9012
     ListsInit.check,           -- SC9013
     OutParamNaming.check,      -- SC9014
-    RedundantIntInit.check     -- SC9015
+    RedundantIntInit.check,    -- SC9015
+    BlankSubstitution.check    -- SC9016
   ]

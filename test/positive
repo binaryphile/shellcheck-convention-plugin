@@ -128,3 +128,11 @@ pos9015count() {
   count=$(wc -l </dev/null)
   echo $count
 }
+
+# SC9016: blank test by deleting a class -- use a glob instead.
+
+pos9016() {
+  local s=$1
+  [[ -z ${s//[[:space:]]/} ]] && echo blank
+  [[ -n "${s//[[:blank:]]}" ]] && echo nonblank
+}

@@ -553,3 +553,24 @@ neg9015separated() {
 declare -i neg9015scriptLevel=0
 neg9015scriptLevel=5
 echo $neg9015scriptLevel
+
+# SC9016 non-fires: not a class, non-empty replacement, single substitution,
+# compound operand, not a test, plain test, negated classes, single-bracket
+# tests (not equivalent for an unquoted operand), array.
+
+neg9016() {
+  local s=$1 t
+  local -a arr=("$@")
+  [[ -z ${s//x/} ]] && echo 1
+  [[ -z ${s//[[:space:]]/_} ]] && echo 2
+  [[ -z ${s/[[:space:]]/} ]] && echo 3
+  [[ -z "${s//[[:space:]]/}x" ]] && echo 4
+  t=${s//[[:space:]]/}
+  [[ -z $s ]] && echo "5 $t"
+  [[ -z ${s//[!a]/} ]] && echo 6
+  [[ -n ${s//[^a]/} ]] && echo 7
+  [ -n ${s//[[:space:]]/} ] && echo 8
+  # shellcheck disable=SC9010
+  [ -z "${s//[[:space:]]/}" ] && echo 9
+  [[ -z ${arr[@]//[[:space:]]/} ]] && echo 10
+}
