@@ -1052,6 +1052,43 @@ not sufficient context.
   `prop_sc9015_*` properties mirror them as documentation (section 2.2:
   the flake does not run props).
 
+### SC9016 -- Blank test via `${NAME//[CLASS]/}` instead of a glob
+
+- **Module**: `src/BlankSubstitution.hs`
+- **Severity**: `style`
+- **Always-on**: yes -- `cdName = "blank-substitution"`
+- **Source rule**: bash-style-guide Risks item 10 -- test "is this string
+  all class characters" with a glob, not by deleting the class and testing
+  the remainder. The substitution copies the string and reads less
+  directly. Task shellcheck-convention-plugin#76831d2a4b270681.
+- **Fires** (all must hold):
+  - a unary `-z` or `-n` test inside `[[ ]]` (single-bracket `[ ]` and
+    `test` never fire);
+  - the operand is exactly one parameter expansion, optionally wrapped in
+    one pair of double quotes, with nothing else in the word;
+  - the expansion is `${NAME//[BRACKET]/}` or `${NAME//[BRACKET]}`: NAME a
+    plain identifier (no subscript, so arrays never match), a global
+    substitution, a pattern that is exactly one bracket expression
+    (POSIX classes such as `[:space:]` inside it are consumed as part of
+    it), and an empty replacement;
+  - the bracket expression is not already negated (its first character
+    after `[` is neither `!` nor `^`).
+- **Suggestion**: for `-z`, `[[ $NAME != *[!INNER]* ]]`; for `-n`,
+  `[[ $NAME == *[!INNER]* ]]`, where INNER is the bracket's contents.
+- **Equivalence**: for a non-negated class C, `[[ -z ${s//[C]/} ]]` holds
+  iff every character of s is in C (or s is empty) iff s has no character
+  outside C iff `[[ $s != *[!C]* ]]`; `-n` is the negation. Checked on 14
+  edge cases in the C and UTF-8 locales, including invalid UTF-8.
+  It does not hold for (a) an already-negated class -- prefixing `!` does
+  not complement `[!a]` (s=`b` differs) -- or (b) a single-bracket test
+  with an unquoted operand, where a whitespace-only s leaves `[ -n ]`,
+  which is true. Both are excluded above. Named residual: `shopt -s
+  nocasematch` may affect the two pattern matches differently.
+- **Design history**: 2 `/grade` rounds (plan R1 SEND BACK for the two
+  exclusions above, R2 APPROVE).
+- **Coverage**: positive and negative shapes in `test/positive` /
+  `test/negative`, executed by `bin/verify` with an exact SC9016 count.
+
 ## 4. Autofix (-f diff)
 
 Pilot (#75070): a plugin check can attach a ShellCheck-native `Fix` to
