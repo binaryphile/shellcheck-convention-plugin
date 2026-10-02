@@ -42,7 +42,7 @@ checkUnquotedUnderscore token = case getExpansionName token of
               && not (isIntegerTyped parents token name)
               && not isFragmentMode) $
             err (getId token) 9001 $
-                "Variable $" ++ name ++ " may contain newlines or be empty and must be quoted."
+                "Variable $" ++ name ++ " carries a must-quote suffix (_ may be empty; *Lines may span lines) and must be quoted."
     _ -> return ()
 
 needsQuoting :: Shell -> Map.Map Id Token -> Token -> Bool
