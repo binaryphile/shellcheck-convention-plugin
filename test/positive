@@ -136,3 +136,16 @@ pos9016() {
   [[ -z ${s//[[:space:]]/} ]] && echo blank
   [[ -n "${s//[[:blank:]]}" ]] && echo nonblank
 }
+
+# *Lines suffix (bash-style-guide 2026-10 naming revision): *Lines is a
+# must-quote marker like _, so these trip SC9001 / SC9004.
+
+posLines() {
+  local xLines
+  xLines=$(cat /etc/hostname)
+  echo $xLines
+  echo $hostLinesQ
+  local maxLines=10   # untyped count: accepted false positive; the guide names counts *Count
+  echo $maxLines
+  xLines_=a
+}

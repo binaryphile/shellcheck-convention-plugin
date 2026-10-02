@@ -1,6 +1,6 @@
 {-
     IFS/noglob convention domain helpers.
-    These are specific to the _ suffix taint-tracking naming convention.
+    These are specific to the _ / *Lines must-quote naming convention.
     See docs/design.md section 3 for details.
 -}
 module Convention (
@@ -9,6 +9,9 @@ module Convention (
     hasListSuffixOnBare,
     hasListsSuffix,
     hasListsSuffixOnBare,
+    hasLinesSuffix,
+    hasLinesSuffixOnBare,
+    isTaintMarked,
     stripTaintSuffix,
     fileHasIfsNoglobDiscipline,
     isIntegerTyped
@@ -67,6 +70,31 @@ hasListsSuffixOnBare name =
 -- hasListsSuffixOnBare. Mirrors hasListSuffix's shape.
 hasListsSuffix :: String -> Bool
 hasListsSuffix = hasListsSuffixOnBare . stripTaintSuffix
+
+-- | True if the bare name (no taint suffix) ends in 'Lines' or
+-- 'Lines<X>' where X is a single uppercase ASCII library suffix
+-- letter. Examples: usageLines (yes), hostLinesQ (yes), lineCount
+-- (no), guidelines (no). bash-style-guide's 2026-10 revision makes
+-- *Lines the must-quote marker for multi-line text, alongside '_'.
+hasLinesSuffixOnBare :: String -> Bool
+hasLinesSuffixOnBare name =
+    "Lines" `isSuffixOf` name
+    || (length name >= 6
+        && isAsciiUpper (last name)
+        && "Lines" `isSuffixOf` init name)
+
+-- | True if the name (which must already have a taint suffix) also has
+-- a Lines suffix. Strips '_' first and delegates to
+-- hasLinesSuffixOnBare. Mirrors hasListSuffix's shape.
+hasLinesSuffix :: String -> Bool
+hasLinesSuffix = hasLinesSuffixOnBare . stripTaintSuffix
+
+-- | True if the name carries a must-quote marker: the '_' taint
+-- suffix (single-line, may be empty) or the 'Lines' suffix
+-- (multi-line text). *List is deliberately excluded: a list may be
+-- split on purpose.
+isTaintMarked :: String -> Bool
+isTaintMarked name = hasTaintSuffix name || hasLinesSuffixOnBare name
 
 -- | True iff the script enclosing the given token has IFS+noglob
 -- discipline at top-level scope (UC-42 #17958). The predicate is

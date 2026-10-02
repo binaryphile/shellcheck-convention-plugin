@@ -17,7 +17,7 @@ check = CustomCheck {
     ccAlwaysOn = True,
     ccDescription = newCheckDescription {
         cdName = "mutually-exclusive-suffixes",
-        cdDescription = "Warn when _ and List/Lists suffixes are both present on a variable",
+        cdDescription = "Warn when _ and Lines/List/Lists suffixes are both present on a variable",
         cdPositive = "hostList_=foo",
         cdNegative = "hostList=foo"
     }
@@ -29,11 +29,15 @@ checkMutuallyExclusive (T_Assignment id _ name _ _)
         err id 9004 $ "Suffixes _ and List are mutually exclusive on " ++ name ++ "."
     | hasTaintSuffix name && hasListsSuffix name =
         err id 9004 $ "Suffixes _ and Lists are mutually exclusive on " ++ name ++ "."
+    | hasTaintSuffix name && hasLinesSuffix name =
+        err id 9004 $ "Suffixes _ and Lines are mutually exclusive on " ++ name ++ "."
 checkMutuallyExclusive token = case getExpansionName token of
     Just name | hasTaintSuffix name && hasListSuffix name ->
         err (getId token) 9004 $ "Suffixes _ and List are mutually exclusive on " ++ name ++ "."
     Just name | hasTaintSuffix name && hasListsSuffix name ->
         err (getId token) 9004 $ "Suffixes _ and Lists are mutually exclusive on " ++ name ++ "."
+    Just name | hasTaintSuffix name && hasLinesSuffix name ->
+        err (getId token) 9004 $ "Suffixes _ and Lines are mutually exclusive on " ++ name ++ "."
     _ -> return ()
 
 -- Tests
@@ -43,6 +47,9 @@ prop_sc9004_assignHostListQ = verify checkMutuallyExclusive "hostListQ_=foo"
 prop_sc9004_assignGroupList = verify checkMutuallyExclusive "groupList_=foo"
 prop_sc9004_expandHostList = verify checkMutuallyExclusive "echo $hostList_"
 
+prop_sc9004_assignLines = verify checkMutuallyExclusive "xLines_=foo"
+prop_sc9004_expandLinesQ = verify checkMutuallyExclusive "echo $hostLinesQ_"
+prop_sc9004_linesNoTaint = verifyNot checkMutuallyExclusive "xLines=foo"
 prop_sc9004_noTaint = verifyNot checkMutuallyExclusive "hostList=foo"
 prop_sc9004_noList = verifyNot checkMutuallyExclusive "host_=foo"
 prop_sc9004_lowercaseList = verifyNot checkMutuallyExclusive "hostlist_=foo"

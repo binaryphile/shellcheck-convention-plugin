@@ -51,7 +51,7 @@ checkIfsNoglobDiscipline token = case getExpansionName token of
     _ -> return ()
   where
     basicWarn name =
-        not (hasTaintSuffix name)
+        not (isTaintMarked name)
         && name `notElem` specialVars
         && not (isArrayExpansion token)
         && not (isCountingReference token)
@@ -81,6 +81,7 @@ isInProtectiveQuotes shell parents t = fromMaybe False $ do
     isSoleContent _ = False
 
 -- Tests: should fire (would-be-SC9003 trigger in a file without discipline)
+prop_sc9010_linesQuotedSilent = verifyNot checkIfsNoglobDiscipline "xLines=$(cat f); echo \"$xLines\""
 prop_sc9010_fires_no_discipline = verifyCode checkIfsNoglobDiscipline 9010 "var=hello; echo \"$var\""
 prop_sc9010_fires_partial_discipline_ifs_only = verifyCode checkIfsNoglobDiscipline 9010 "IFS=$'\\n'; var=hello; echo \"$var\""
 prop_sc9010_fires_partial_discipline_noglob_only = verifyCode checkIfsNoglobDiscipline 9010 "set -o noglob; var=hello; echo \"$var\""

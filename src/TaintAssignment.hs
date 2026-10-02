@@ -19,9 +19,9 @@ check = CustomCheck {
     ccAlwaysOn = True,
     ccDescription = newCheckDescription {
         cdName = "taint-assignment",
-        cdDescription = "Warn when command substitution is assigned to a non-_ variable",
+        cdDescription = "Warn when command substitution is assigned to an unmarked variable",
         cdPositive = "content=$(cat file)",
-        cdNegative = "content_=$(cat file)"
+        cdNegative = "contentLines=$(cat file)"
     }
 }
 
@@ -29,7 +29,7 @@ checkCmdSubNoUnderscore :: Token -> Analysis
 checkCmdSubNoUnderscore t@(T_Assignment id _ name _ value)
     | not (null name)
     , isLowerStart name
-    , not (hasTaintSuffix name)
+    , not (isTaintMarked name)
     -- *List/*Lists suffix (task #37c5aa81d3e03bc9): bash-style-guide.md
     -- documents these as an EQUALLY VALID quoting-required convention
     -- alongside the '_' suffix (a serialized newline-delimited list is
@@ -52,7 +52,9 @@ checkCmdSubNoUnderscore t@(T_Assignment id _ name _ value)
               && not isFragmentMode) $
             warn id 9002 $
                 "Command substitution assigned to " ++ name
-                ++ " -- use " ++ name ++ "_ if it may contain newlines."
+                ++ " -- use " ++ name ++ "Lines (multi-line text), "
+                ++ name ++ "List (items), " ++ name
+                ++ "_ (single-line, may be empty), or assign through safeRun."
 checkCmdSubNoUnderscore _ = return ()
 
 isLowerStart :: String -> Bool
@@ -89,6 +91,8 @@ prop_sc9002_backtick = verify checkCmdSubNoUnderscore "result=`cat file`"
 prop_sc9002_unknown = verify checkCmdSubNoUnderscore "data=$(somecommand)"
 
 -- Tests: should NOT fire
+prop_sc9002_lines = verifyNot checkCmdSubNoUnderscore "contentLines=$(cat file)"
+prop_sc9002_linesLib = verifyNot checkCmdSubNoUnderscore "hostLinesQ=$(cat file)"
 prop_sc9002_tainted = verifyNot checkCmdSubNoUnderscore "content_=$(cat file)"
 prop_sc9002_uppercase = verifyNot checkCmdSubNoUnderscore "FOO=$(cat file)"
 

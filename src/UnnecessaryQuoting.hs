@@ -45,7 +45,7 @@ checkUnnecessaryQuoting token = case getExpansionName token of
     _ -> return ()
   where
     basicWarn name =
-        not (hasTaintSuffix name)
+        not (isTaintMarked name)
         -- *List/*Lists suffix (task #37c5aa81d3e03bc9): a correctly-named
         -- *List/*Lists variable holding a serialized newline-delimited
         -- list MUST stay quoted at its call sites -- SC9003 must not
@@ -99,6 +99,7 @@ prop_sc9003_arg = verify checkUnnecessaryQuoting (disciplineHdr ++ "x=1; cmd \"$
 -- Tests: should NOT fire (file has discipline; non-trigger pattern)
 -- #12026: literal text alongside the expansion makes the quotes necessary
 -- for that text, not for the variable -- "unnecessary quoting" doesn't apply.
+prop_sc9003_linesStaysQuoted = verifyNot checkUnnecessaryQuoting (disciplineHdr ++ "xLines=$(cat f); echo \"$xLines\"")
 prop_sc9003_literalPrefix = verifyNot checkUnnecessaryQuoting (disciplineHdr ++ "plain=x; echo \"value: $plain\"")
 prop_sc9003_literalPrefixAndSuffix = verifyNot checkUnnecessaryQuoting (disciplineHdr ++ "plain=x; echo \"prefix-$plain-suffix\"")
 prop_sc9003_tainted = verifyNot checkUnnecessaryQuoting (disciplineHdr ++ "var_=x; echo \"$var_\"")

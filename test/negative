@@ -574,3 +574,19 @@ neg9016() {
   [ -z "${s//[[:space:]]/}" ] && echo 9
   [[ -z ${arr[@]//[[:space:]]/} ]] && echo 10
 }
+
+# *Lines suffix (bash-style-guide 2026-10 naming revision): correct uses stay silent.
+
+negLines() {
+  local xLines
+  xLines=$(cat /etc/hostname)
+  echo "$xLines"
+  local -i maxLines
+  maxLines=$(wc -l </dev/null)
+  echo $maxLines
+  local xList
+  xList=$(cat /etc/hostname)
+  echo $xList
+  local -a xLists=()
+  echo "${xLists[@]}"
+}

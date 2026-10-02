@@ -20,7 +20,7 @@ check = CustomCheck {
     ccAlwaysOn = True,
     ccDescription = newCheckDescription {
         cdName = "taint-suffix",
-        cdDescription = "Warn when _-suffixed variable is used unquoted in a splitting context",
+        cdDescription = "Warn when a _- or *Lines-suffixed variable is used unquoted in a splitting context",
         cdPositive = "var_=x; echo $var_",
         cdNegative = "var_=x; echo \"$var_\""
     }
@@ -28,7 +28,7 @@ check = CustomCheck {
 
 checkUnquotedUnderscore :: Token -> Analysis
 checkUnquotedUnderscore token = case getExpansionName token of
-    Just name | hasTaintSuffix name -> do
+    Just name | isTaintMarked name -> do
         params <- ask
         let parents = parentMap params
             shell = shellType params
@@ -42,7 +42,7 @@ checkUnquotedUnderscore token = case getExpansionName token of
               && not (isIntegerTyped parents token name)
               && not isFragmentMode) $
             err (getId token) 9001 $
-                "Variable $" ++ name ++ " contains IFS characters and must be quoted."
+                "Variable $" ++ name ++ " may contain newlines or be empty and must be quoted."
     _ -> return ()
 
 needsQuoting :: Shell -> Map.Map Id Token -> Token -> Bool
@@ -71,6 +71,14 @@ prop_sc9001_doublebrack = verifyNot checkUnquotedUnderscore "var_=x; [[ $var_ ]]
 prop_sc9001_arithmetic = verifyNot checkUnquotedUnderscore "(( var_ + 1 ))"
 prop_sc9001_heredoc = verifyNot checkUnquotedUnderscore "cat <<EOF\n$var_\nEOF"
 prop_sc9001_case = verifyNot checkUnquotedUnderscore "case $var_ in x) ;; esac"
+-- Tests: *Lines suffix is a must-quote marker too (bash-style-guide 2026-10)
+prop_sc9001_lines = verifyCode checkUnquotedUnderscore 9001 "xLines=$(cat f); echo $xLines"
+prop_sc9001_linesLib = verify checkUnquotedUnderscore "echo $hostLinesQ"
+prop_sc9001_linesQuoted = verifyNot checkUnquotedUnderscore "echo \"$xLines\""
+prop_sc9001_linesIntTyped = verifyNot checkUnquotedUnderscore "f() { local -i maxLines; maxLines=3; echo $maxLines; }"
+prop_sc9001_listNotMarked = verifyNot checkUnquotedUnderscore "echo $xList"
+prop_sc9001_guidelinesNotMarked = verifyNot checkUnquotedUnderscore "echo $guidelines"
+
 prop_sc9001_forin = verifyNot checkUnquotedUnderscore "for f in $var_; do :; done"
 
 -- Tests: special exclusions
