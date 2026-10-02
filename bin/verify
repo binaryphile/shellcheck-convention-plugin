@@ -138,4 +138,14 @@ sc9015Count=$(grep -cE '\[SC9015\]' <<<"$pos_" || true)
 sc9016Count=$(grep -cE '\[SC9016\]' <<<"$pos_" || true)
 (( sc9016Count == 2 )) || { printf 'FAIL: expected exactly 2 SC9016 findings on the positive fixture, got %s\n%s\n' $sc9016Count "$pos_" >&2; exit 1; }
 
+# *Lines revision: the SC9002 message must name all three suffixes and
+# safeRun, and SC9001 must fire on each unquoted *Lines line in posLines.
+grep -qE "content -- use contentLines \(multi-line text\), contentList \(items\), content_ \(single-line, may be empty\), or assign through safeRun\. \[SC9002\]" <<<"$pos_" \
+  || { printf 'FAIL: SC9002 message does not name *Lines, *List, _ and safeRun\n%s\n' "$pos_" >&2; exit 1; }
+for v in xLines hostLinesQ maxLines; do
+  # shellcheck disable=SC9003  # regex literal needs quotes (see same disable above)
+  grep -qE "Variable \\\$$v carries a must-quote suffix.*\[SC9001\]" <<<"$pos_" \
+    || { printf 'FAIL: SC9001 did not fire on unquoted $%s\n%s\n' $v "$pos_" >&2; exit 1; }
+done
+
 printf 'OK: SC9001-SC9016 emitted across positive/positive-no-discipline/adversarial/adversarial-retoggle fixtures; negative silent; dlopen confirmed; fragment-mode suppresses SC9001/SC9002 only\n'

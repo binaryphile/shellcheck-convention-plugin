@@ -173,7 +173,10 @@ mapping is direct; checks without a published source are tagged
   `*Lines` means multi-line text; both must be quoted. Known
   false-positive shape: an untyped count named `*Lines`
   (`maxLines=10`); the guide names counts `*Count`, and a visible
-  `-i` declaration suppresses it.
+  `-i` declaration suppresses it. The pre-existing `for x in $var`
+  exemption (loop words are context-controlled) applies to `*Lines` too:
+  `for line in $contentLines` is not flagged. The guide reserves
+  deliberate splitting for `*List`; that choice is review-time judgment.
 - **Integer-typed exception (#36870)**: SC9001 is suppressed when the
   variable is declared with the bash integer attribute (`-i` flag) via
   `local`/`declare`/`typeset`/`readonly` in the enclosing scope. Bash
