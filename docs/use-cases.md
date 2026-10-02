@@ -256,6 +256,13 @@ the wrong shape.
   version in a new commit; reference the old commit in the message.
   `git revert` is recommended for trivial-tier reverts to keep the
   audit obvious.
+- **1a.** The style-guide revision widens a rule instead of reversing
+  it (e.g. a new naming suffix joins an existing marker set) → PM
+  extends the affected checks in place, with no revert. Steps 2 and 6
+  do not apply; step 3 runs `bin/verify` plus targeted fixture lines
+  for each newly covered case, and the commit cites the guide
+  revision. Instance: the `*Lines` suffix joining `_` as a
+  must-quote marker for SC9001/SC9002/SC9003/SC9004/SC9010.
 - **6a.** PM wants to reuse the SC code → renumber only if the rule
   changed substantively; reuse if the implementation was buggy but
   the rule's intent is unchanged. SC9008's first attempt reused the

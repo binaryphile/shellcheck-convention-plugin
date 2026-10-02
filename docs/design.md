@@ -163,9 +163,17 @@ mapping is direct; checks without a published source are tagged
 - **Severity**: `err`
 - **Always-on**: yes
 - **Source rule**: IFS/noglob discipline (project-local; bash-style-guide §3 discusses *_ taint suffix).
-- **Pattern**: a `T_DollarBraced` whose name has the `_` taint
-  suffix is expanded in a word-splitting context (unquoted) — must
-  be quoted to prevent IFS splitting and glob expansion.
+- **Pattern**: a `T_DollarBraced` whose name carries a must-quote
+  marker -- the `_` taint suffix or the `*Lines` suffix (`Lines` or
+  `Lines<X>`, `Convention.isTaintMarked`) -- is expanded in a
+  word-splitting context (unquoted) -- must be quoted to prevent IFS
+  splitting and glob expansion. `*List` is not a marker here: a list
+  may be split deliberately. Under the guide's 2026-10 naming
+  revision `_` means a single-line value that may be empty and
+  `*Lines` means multi-line text; both must be quoted. Known
+  false-positive shape: an untyped count named `*Lines`
+  (`maxLines=10`); the guide names counts `*Count`, and a visible
+  `-i` declaration suppresses it.
 - **Integer-typed exception (#36870)**: SC9001 is suppressed when the
   variable is declared with the bash integer attribute (`-i` flag) via
   `local`/`declare`/`typeset`/`readonly` in the enclosing scope. Bash
@@ -185,11 +193,15 @@ mapping is direct; checks without a published source are tagged
 - **Severity**: `warn`
 - **Always-on**: yes — `cdName = "taint-assignment"`
 - **Source rule**: IFS/noglob discipline (project-local).
-- **Pattern**: `x=$(cmd)` where `x` does NOT have the `_` taint
-  suffix and `cmd` is not in the allowlisted-pure-output set
-  (`hostname`, etc.). Cmdsub output may contain newlines; the
-  taint-suffix convention requires capturing it into a `_`-suffixed
-  variable.
+- **Pattern**: `x=$(cmd)` where `x` starts lowercase, carries no
+  marker (`_`, `*Lines`, `*List`, `*Lists`), and `cmd` is not in the
+  allowlisted-pure-output set (`hostname`, `date`, etc.). Cmdsub
+  output may contain newlines or be empty; the convention requires a
+  marked name (`*Lines` for multi-line text, `*List` for items, `_`
+  for single-line-may-be-empty) or assignment through the guide's
+  `safeRun` helper, which asserts non-empty and newline-free at run
+  time. Names that start uppercase (globals) are never examined, and
+  fragment mode suppresses the check.
 - **Integer-typed exception (#36870)**: SC9002 is suppressed when the
   assignment LHS is declared with the bash integer attribute (`-i`
   flag) via `local`/`declare`/`typeset`/`readonly` in the enclosing
@@ -211,6 +223,8 @@ mapping is direct; checks without a published source are tagged
   of SC9001).
 - **Pattern**: a non-taint variable expansion that's quoted in a
   splitting context where IFS+noglob makes the quoting redundant.
+  Names marked `_`, `*Lines`, `*List` or `*Lists` are never told to
+  drop their quotes.
 - **Discipline gating** (#17958): SC9003 only fires when the file
   satisfies the `fileHasIfsNoglobDiscipline` predicate from
   `Convention.hs`. Files lacking the discipline get SC9010 instead
@@ -227,11 +241,12 @@ mapping is direct; checks without a published source are tagged
 - **Severity**: `err`
 - **Always-on**: yes
 - **Source rule**: project-local — taint convention says `_` and
-  `List`/`Lists` cannot coexist on one identifier.
+  `Lines`/`List`/`Lists` cannot coexist on one identifier.
 - **Pattern**: `T_Assignment` or expansion where the name has BOTH
   the `_` taint suffix and the `List` suffix, OR both the `_` taint
   suffix and the `Lists` suffix (each with optional single-uppercase
-  library marker). The `Lists` half (task #87842) reuses
+  library marker), OR both the `_` taint suffix and the `Lines` suffix
+  (`xLines_`; `Convention.hasLinesSuffix`). The `Lists` half (task #87842) reuses
   `Convention.hasListsSuffixOnBare`, promoted from `ListsInit.hs`
   (its original sole owner) into `Convention.hs` now that
   `MutualExclusive.hs` is a second consumer.
@@ -429,7 +444,9 @@ not sufficient context.
   adopt `IFS=$'\n'` + `set -o noglob` at file top so the convention's
   quoting recommendations (per SC9001/SC9003) are sound.
 - **Pattern**: a quoted non-tainted non-special variable expansion
-  in a file whose discipline predicate returns False. The predicate
+  in a file whose discipline predicate returns False. A `*Lines` name
+  counts as tainted here (its quotes are required, not a sign the
+  file lacks discipline). The predicate
   uses LATEST-EFFECTIVE state on the DIRECT children of T_Script
   (non-recursive walk):
   - **IFS discipline (latest-effective)**: scan T_Script's direct
