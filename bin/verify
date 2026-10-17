@@ -140,8 +140,8 @@ sc9016Count=$(grep -cE '\[SC9016\]' <<<"$pos_" || true)
 
 # *Lines revision: the SC9002 message must name all three suffixes and
 # safeRun, and SC9001 must fire on each unquoted *Lines line in posLines.
-grep -qE "content -- use contentLines \(multi-line text\), contentList \(items\), content_ \(single-line, may be empty\), or assign through safeRun\. \[SC9002\]" <<<"$pos_" \
-  || { printf 'FAIL: SC9002 message does not name *Lines, *List, _ and safeRun\n%s\n' "$pos_" >&2; exit 1; }
+grep -qE "content -- if the value must be present \(empty could only mean an error\), assign through safeRun and leave the name unsuffixed; if empty or multi-line is a legitimate result, use contentLines \(multi-line text\), contentList \(items\), or content_ \(single-line, empty is legitimate\)\. \[SC9002\]" <<<"$pos_" \
+  || { printf 'FAIL: SC9002 message does not lead with safeRun for a required value and name *Lines, *List and _ for a legitimately empty one\n%s\n' "$pos_" >&2; exit 1; }
 for v in xLines hostLinesQ maxLines; do
   # shellcheck disable=SC9003  # regex literal needs quotes (see same disable above)
   grep -qE "Variable \\\$$v carries a must-quote suffix.*\[SC9001\]" <<<"$pos_" \

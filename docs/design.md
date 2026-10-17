@@ -169,7 +169,7 @@ mapping is direct; checks without a published source are tagged
   word-splitting context (unquoted) -- must be quoted to prevent IFS
   splitting and glob expansion. `*List` is not a marker here: a list
   may be split deliberately. Under the guide's 2026-10 naming
-  revision `_` means a single-line value that may be empty and
+  revision `_` means a single-line value for which empty is a legitimate outcome and
   `*Lines` means multi-line text; both must be quoted. Known
   false-positive shape: an untyped count named `*Lines`
   (`maxLines=10`); the guide names counts `*Count`, and a visible
@@ -199,12 +199,16 @@ mapping is direct; checks without a published source are tagged
 - **Pattern**: `x=$(cmd)` where `x` starts lowercase, carries no
   marker (`_`, `*Lines`, `*List`, `*Lists`), and `cmd` is not in the
   allowlisted-pure-output set (`hostname`, `date`, etc.). Cmdsub
-  output may contain newlines or be empty; the convention requires a
-  marked name (`*Lines` for multi-line text, `*List` for items, `_`
-  for single-line-may-be-empty) or assignment through the guide's
-  `safeRun` helper, which asserts non-empty and newline-free at run
-  time. Names that start uppercase (globals) are never examined, and
-  fragment mode suppresses the check.
+  output may contain newlines or be empty, and the message asks which
+  it is by design. A value that must be present (empty could only mean
+  an error) is assigned through the guide's `safeRun` helper, which
+  asserts non-empty and newline-free at run time, and keeps an
+  unsuffixed name. A value for which empty or multi-line is a
+  legitimate result takes a marked name (`*Lines` for multi-line text,
+  `*List` for items, `_` for single-line where empty is legitimate).
+  The message leads with the `safeRun` case. Names that start
+  uppercase (globals) are never examined, and fragment mode suppresses
+  the check.
 - **Integer-typed exception (#36870)**: SC9002 is suppressed when the
   assignment LHS is declared with the bash integer attribute (`-i`
   flag) via `local`/`declare`/`typeset`/`readonly` in the enclosing

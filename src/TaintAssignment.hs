@@ -52,9 +52,11 @@ checkCmdSubNoUnderscore t@(T_Assignment id _ name _ value)
               && not isFragmentMode) $
             warn id 9002 $
                 "Command substitution assigned to " ++ name
-                ++ " -- use " ++ name ++ "Lines (multi-line text), "
-                ++ name ++ "List (items), " ++ name
-                ++ "_ (single-line, may be empty), or assign through safeRun."
+                ++ " -- if the value must be present (empty could only mean an error),"
+                ++ " assign through safeRun and leave the name unsuffixed; if empty or"
+                ++ " multi-line is a legitimate result, use " ++ name
+                ++ "Lines (multi-line text), " ++ name ++ "List (items), or " ++ name
+                ++ "_ (single-line, empty is legitimate)."
 checkCmdSubNoUnderscore _ = return ()
 
 isLowerStart :: String -> Bool

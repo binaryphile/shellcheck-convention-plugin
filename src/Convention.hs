@@ -90,7 +90,7 @@ hasLinesSuffix :: String -> Bool
 hasLinesSuffix = hasLinesSuffixOnBare . stripTaintSuffix
 
 -- | True if the name carries a must-quote marker: the '_' taint
--- suffix (single-line, may be empty) or the 'Lines' suffix
+-- suffix (single-line, empty is a legitimate value) or the 'Lines' suffix
 -- (multi-line text). *List is deliberately excluded: a list may be
 -- split on purpose.
 isTaintMarked :: String -> Bool
