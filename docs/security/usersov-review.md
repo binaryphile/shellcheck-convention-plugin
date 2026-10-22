@@ -73,7 +73,7 @@ build/lint invocation.
 
 **Derived surfaces**: none identified with a feasible threat. `bin/verify` (the build/test driver)
 and `bin/claude` (the generic Nix-wrapper pattern already reviewed elsewhere in this sweep, not
-project-specific) were both inspected — both are local-only build/test tooling with no network or
+project-specific; retired 2026-10-21, jeeves#84632bb9) were both inspected — both are local-only build/test tooling with no network or
 credential surface.
 
 ## Block 4 — Per-property disposition
